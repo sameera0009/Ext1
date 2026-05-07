@@ -1,84 +1,31 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <title>Banking Viz Extension</title>
+  <meta charset="utf-8" />
+  <title>Banking Extension</title>
 
-  <!-- Tableau Extensions API -->
   <script src="https://cdn.jsdelivr.net/npm/@tableau/extensions-api@1.11.0/dist/tableau.extensions.1.latest.js"></script>
-
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 0;
-      padding: 12px;
-      background: #f5f6fa;
-    }
-
-    .card {
-      background: white;
-      padding: 16px;
-      border-radius: 10px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-    }
-
-    h2 {
-      margin: 0 0 10px 0;
-      font-size: 16px;
-    }
-
-    button {
-      padding: 8px 12px;
-      border: none;
-      border-radius: 6px;
-      background: #2d6cdf;
-      color: white;
-      cursor: pointer;
-    }
-
-    button:hover {
-      background: #1f56b3;
-    }
-
-    #output {
-      margin-top: 10px;
-      font-size: 13px;
-      color: #333;
-    }
-  </style>
 </head>
 
 <body>
-  <div class="card">
-    <h2>Banking Viz Extension</h2>
-
-    <button onclick="getData()">Load Data from Tableau</button>
-
-    <div id="output">Waiting for Tableau connection...</div>
-  </div>
+  <h3>Banking Dashboard Extension</h3>
+  <button onclick="load()">Load Data</button>
+  <div id="out">Not connected</div>
 
   <script>
     let dashboard;
 
-    // Initialize Tableau Extension
     tableau.extensions.initializeAsync().then(() => {
       dashboard = tableau.extensions.dashboardContent.dashboard;
-      document.getElementById("output").innerText = "Connected to Tableau ✔";
-    }).catch(err => {
-      document.getElementById("output").innerText = "Error: " + err.message;
+      document.getElementById("out").innerText = "Connected ✔";
     });
 
-    function getData() {
-      if (!dashboard) return;
-
-      const worksheets = dashboard.worksheets;
-
-      worksheets[0].getSummaryDataAsync().then(data => {
-        document.getElementById("output").innerText =
-          "Rows loaded: " + data.totalRowCount;
+    function load() {
+      dashboard.worksheets[0].getSummaryDataAsync().then(data => {
+        document.getElementById("out").innerText =
+          "Rows: " + data.totalRowCount;
       });
     }
   </script>
-
 </body>
 </html>
