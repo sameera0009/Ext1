@@ -2,138 +2,161 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Futuristic Neon Donut</title>
+    <title>Futuristic Neon Donut Pro</title>
     <script src="https://cdn.jsdelivr.net/gh/tableau/extensions-api/lib/tableau.extensions.1.latest.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
     <style>
         :root { --bg: #0b0e14; --cyan: #00f2ff; }
-        body, html { margin: 0; padding: 0; background: var(--bg); color: white; font-family: 'Orbitron', sans-serif; overflow: hidden; }
-        #content { width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
-        .arc:hover { filter: brightness(1.6) drop-shadow(0 0 15px var(--cyan)); cursor: pointer; }
-        .center-label { fill: white; font-weight: bold; text-shadow: 0 0 15px var(--cyan); text-anchor: middle; pointer-events: none; }
+        body, html { 
+            margin: 0; padding: 0; 
+            width: 100vw; height: 100vh;
+            background: var(--bg); 
+            color: white; 
+            font-family: 'Orbitron', sans-serif; 
+            overflow: hidden;
+            display: flex; justify-content: center; align-items: center;
+        }
+        #content { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; position: relative; }
+        
+        /* Modern Tooltip */
+        .tooltip {
+            position: absolute;
+            padding: 10px;
+            background: rgba(11, 14, 20, 0.9);
+            border: 1px solid var(--cyan);
+            border-radius: 4px;
+            pointer-events: none;
+            opacity: 0;
+            font-size: 12px;
+            box-shadow: 0 0 15px rgba(0, 242, 255, 0.3);
+            z-index: 10;
+        }
+
+        .arc { cursor: pointer; transition: filter 0.3s ease; stroke-linejoin: round; }
+        .arc:hover { filter: brightness(1.4) drop-shadow(0 0 10px var(--cyan)); }
+        
+        .value-text { fill: white; font-weight: bold; text-anchor: middle; text-shadow: 0 0 10px var(--cyan); pointer-events: none; }
+        .label-text { fill: #aaa; font-size: 12px; text-anchor: middle; text-transform: uppercase; pointer-events: none; }
     </style>
 </head>
 <body>
-    <div id="content"></div>
+    <div id="content">
+        <div class="tooltip" id="tooltip"></div>
+    </div>
 
     <script>
         'use strict';
 
         (function () {
+            let summaryData = [];
+            let encodingMap = {};
+            let worksheet;
+
             window.onload = tableau.extensions.initializeAsync().then(() => {
-                const worksheet = tableau.extensions.worksheetContent.worksheet;
-
-                let summaryData = [];
-                let encodingMap = {};
-
-                const updateDataAndRender = async () => {
-                    // Following your sample pattern exactly
+                worksheet = tableau.extensions.worksheetContent.worksheet;
+                
+                const update = async () => {
                     [summaryData, encodingMap] = await Promise.all([
                         getSummaryDataTable(worksheet),
                         getEncodingMap(worksheet)
                     ]);
-
                     renderDonut(summaryData, encodingMap);
                 };
 
-                // Event Listeners
+                // Listeners
                 onresize = () => renderDonut(summaryData, encodingMap);
-                worksheet.addEventListener(tableau.TableauEventType.SummaryDataChanged, updateDataAndRender);
+                worksheet.addEventListener(tableau.TableauEventType.SummaryDataChanged, update);
+                
+                // Settings Listener (User changes colors in Tableau settings)
+                tableau.extensions.settings.addEventListener(tableau.TableauEventType.SettingsChanged, (res) => {
+                    renderDonut(summaryData, encodingMap);
+                });
 
-                updateDataAndRender();
+                update();
             });
 
-            // --- Helper Functions From Your Sample ---
-
-            async function getSummaryDataTable(worksheet) {
+            // --- Data Fetching ---
+            async function getSummaryDataTable(ws) {
                 let rows = [];
-                const dataTableReader = await worksheet.getSummaryDataReaderAsync(undefined, { ignoreSelection: true });
-                for (let i = 0; i < dataTableReader.pageCount; i++) {
-                    const dataTablePage = await dataTableReader.getPageAsync(i);
-                    rows = rows.concat(convertToListOfNamedRows(dataTablePage));
+                const reader = await ws.getSummaryDataReaderAsync(undefined, { ignoreSelection: true });
+                for (let i = 0; i < reader.pageCount; i++) {
+                    const page = await reader.getPageAsync(i);
+                    rows = rows.concat(page.data.map(r => {
+                        const row = {};
+                        page.columns.forEach((col, idx) => { row[col.fieldName] = r[idx]; });
+                        return row;
+                    }));
                 }
-                await dataTableReader.releaseAsync();
+                await reader.releaseAsync();
                 return rows;
             }
 
-            function convertToListOfNamedRows(dataTablePage) {
-                const rows = [];
-                const columns = dataTablePage.columns;
-                const data = dataTablePage.data;
-                for (let i = 0; i < data.length; i++) {
-                    const row = {};
-                    for (let j = 0; j < columns.length; j++) {
-                        row[columns[j].fieldName] = data[i][j];
-                    }
-                    rows.push(row);
-                }
-                return rows;
+            async function getEncodingMap(ws) {
+                const spec = await ws.getVisualSpecificationAsync();
+                const map = {};
+                if (spec.activeMarksSpecificationIndex < 0) return map;
+                spec.marksSpecifications[spec.activeMarksSpecificationIndex].encodings.forEach(e => { map[e.id] = e.field; });
+                return map;
             }
 
-            async function getEncodingMap(worksheet) {
-                const visualSpec = await worksheet.getVisualSpecificationAsync();
-                const encodingMap = {};
-                if (visualSpec.activeMarksSpecificationIndex < 0) return encodingMap;
-                const marksCard = visualSpec.marksSpecifications[visualSpec.activeMarksSpecificationIndex];
-                for (const encoding of marksCard.encodings) { 
-                    encodingMap[encoding.id] = encoding.field; 
-                }
-                return encodingMap;
-            }
-
-            // --- Visualization Logic ---
-
+            // --- Core Render ---
             function renderDonut(data, encodings) {
-                const content = document.getElementById('content');
-                content.innerHTML = '';
+                const content = d3.select("#content");
+                const tooltip = d3.select("#tooltip");
+                content.selectAll("svg").remove();
 
-                // Safety check: Ensure we have fields mapped to our IDs
-                if (!encodings.angle || !encodings.color || data.length === 0) {
-                    const msg = document.createElement('div');
-                    msg.style.color = '#555';
-                    msg.innerText = "DRAG MEASURE TO 'ARC SIZE' AND DIMENSION TO 'CATEGORIES'";
-                    content.appendChild(msg);
-                    return;
-                }
+                if (!encodings.angle || !encodings.color || data.length === 0) return;
 
-                // Process data for D3
+                // Process & Aggregate
                 const processed = data.map(d => ({
-                    value: parseFloat(d[encodings.angle.name].nativeValue) || 0,
-                    label: d[encodings.color.name].formattedValue
+                    val: parseFloat(d[encodings.angle.name].nativeValue) || 0,
+                    lab: d[encodings.color.name].formattedValue
                 }));
+                const finalData = Array.from(d3.rollup(processed, v => d3.sum(v, d => d.val), d => d.lab), ([lab, val]) => ({ lab, val }));
 
-                // Rollup (Aggregate)
-                const finalData = Array.from(
-                    d3.rollup(processed, v => d3.sum(v, d => d.value), d => d.label),
-                    ([label, value]) => ({ label, value })
-                ).filter(d => d.value > 0);
-
-                const width = content.offsetWidth, height = content.offsetHeight;
+                const width = window.innerWidth, height = window.innerHeight;
                 const radius = Math.min(width, height) / 2.8;
 
-                const svg = d3.select(content).append("svg")
-                    .attr("width", width).attr("height", height)
-                    .append("g")
-                    .attr("transform", `translate(${width / 2}, ${height / 2})`);
+                // Get Custom Background from Settings (Fallback to Cyber-black)
+                const bgColor = tableau.extensions.settings.get("bg-color") || "#0b0e14";
+                d3.select("body").style("background-color", bgColor);
+
+                const svg = content.append("svg").attr("width", width).attr("height", height)
+                    .append("g").attr("transform", `translate(${width/2},${height/2})`);
 
                 const colors = d3.scaleOrdinal().range(["#00f2ff", "#7000ff", "#ff007c", "#00ff95", "#ffcf00"]);
-                const pie = d3.pie().value(d => d.value).padAngle(0.05);
-                const arc = d3.arc().innerRadius(radius * 0.7).outerRadius(radius).cornerRadius(15);
+                const pie = d3.pie().value(d => d.val).padAngle(0.04);
+                const arc = d3.arc().innerRadius(radius * 0.72).outerRadius(radius).cornerRadius(10);
 
-                svg.selectAll("path")
-                    .data(pie(finalData))
-                    .enter().append("path")
-                    .attr("class", "arc")
-                    .attr("d", arc)
-                    .attr("fill", d => colors(d.data.label))
-                    .style("stroke", "#0b0e14").style("stroke-width", "4px");
+                const slices = svg.selectAll(".arc").data(pie(finalData)).enter().append("path")
+                    .attr("class", "arc").attr("d", arc)
+                    .attr("fill", d => colors(d.data.lab))
+                    .style("stroke", bgColor).style("stroke-width", "3px");
 
-                svg.append("text")
-                    .attr("class", "center-label")
-                    .attr("dy", "0.35em")
-                    .style("font-size", (radius * 0.16) + "px")
-                    .text("ANALYSIS");
+                // Tooltip Interactions
+                slices.on("mouseover", (e, d) => {
+                    tooltip.style("opacity", 1).html(`<strong>${d.data.lab}</strong><br/>Value: ${d.data.val.toLocaleString()}`);
+                    // Dynamic Center Text update
+                    svg.select(".value-text").text(d.data.val.toLocaleString());
+                    svg.select(".label-text").text(d.data.lab);
+                })
+                .on("mousemove", (e) => {
+                    tooltip.style("left", (e.pageX + 15) + "px").style("top", (e.pageY - 15) + "px");
+                })
+                .on("mouseout", () => {
+                    tooltip.style("opacity", 0);
+                    svg.select(".value-text").text(d3.sum(finalData, d => d.val).toLocaleString());
+                    svg.select(".label-text").text("TOTAL");
+                });
+
+                // Value in Center (No more 'Analysis' text)
+                svg.append("text").attr("class", "value-text").attr("dy", "0.05em")
+                    .style("font-size", (radius * 0.18) + "px")
+                    .text(d3.sum(finalData, d => d.val).toLocaleString());
+                
+                svg.append("text").attr("class", "label-text").attr("dy", "1.8em")
+                    .text("TOTAL");
             }
         })();
     </script>
