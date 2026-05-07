@@ -2,78 +2,110 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Modern Gradient Donut</title>
+    <title>Premium Donut Extension</title>
     <script src="https://cdn.jsdelivr.net/gh/tableau/extensions-api-js@main/lib/tableau.extensions.1.latest.js"></script>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
-        body { font-family: 'Segoe UI', system-ui, sans-serif; margin: 0; background: transparent; overflow: hidden; }
-        #chart { width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
-        .center-val { text-anchor: middle; font-weight: 800; fill: #333; }
-        .center-label { text-anchor: middle; font-size: 14px; fill: #999; text-transform: uppercase; }
-        path { transition: transform 0.2s ease; cursor: pointer; }
-        path:hover { transform: scale(1.02); filter: brightness(1.1); }
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; background: #f9f9f9; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        #chart { width: 100%; height: 100%; }
+        /* Empty State Styling */
+        .setup-container { text-align: center; padding: 40px; border: 2px dashed #ccc; border-radius: 20px; background: white; color: #666; }
+        .setup-container h2 { color: #333; margin-bottom: 10px; }
+        /* Chart Styling */
+        .center-val { text-anchor: middle; font-weight: 800; fill: #2c3e50; }
+        .center-lab { text-anchor: middle; font-size: 12px; fill: #bdc3c7; text-transform: uppercase; letter-spacing: 1px; }
+        path { transition: 0.3s; cursor: pointer; }
+        path:hover { filter: saturate(1.5) drop-shadow(0 0 10px rgba(0,0,0,0.1)); transform: scale(1.02); }
     </style>
 </head>
 <body>
-    <div id="chart"></div>
+
+    <div id="app-container">
+        <div id="setup-screen" class="setup-container">
+            <h2>🍩 Donut Chart Pro</h2>
+            <p>To begin, drag a <b>Dimension</b> and a <b>Measure</b><br>into your Tableau worksheet.</p>
+            <small>Then, ensure the worksheet is added to the dashboard.</small>
+        </div>
+        <div id="chart" style="display:none;"></div>
+    </div>
+
     <script>
-        // Initialize the extension
         tableau.extensions.initializeAsync().then(() => {
-            const render = async () => {
+            fetchDataAndRender();
+
+            // Listen for data/filter changes
+            const worksheet = tableau.extensions.dashboardContent.dashboard.worksheets[0];
+            worksheet.addEventListener(tableau.TableauEventType.FilterChanged, fetchDataAndRender);
+            worksheet.addEventListener(tableau.TableauEventType.MarkSelectionChanged, fetchDataAndRender);
+        });
+
+        async function fetchDataAndRender() {
+            try {
                 const worksheet = tableau.extensions.dashboardContent.dashboard.worksheets[0];
                 const dataTable = await worksheet.getSummaryDataAsync();
                 
-                // Map Data (Col 0: Dimension, Col 1: Measure)
-                const data = dataTable.data.map(d => ({
-                    label: d[0].formattedValue,
-                    value: d[1].value
-                }));
+                // Logic: If we have at least 1 row and 2 columns
+                if (dataTable.data.length > 0 && dataTable.columns.length >= 2) {
+                    document.getElementById('setup-screen').style.display = 'none';
+                    document.getElementById('chart').style.display = 'block';
+                    drawChart(dataTable);
+                } else {
+                    showSetup();
+                }
+            } catch (e) {
+                showSetup();
+            }
+        }
 
-                const width = window.innerWidth, height = window.innerHeight;
-                const radius = Math.min(width, height) / 2 - 40;
+        function showSetup() {
+            document.getElementById('setup-screen').style.display = 'block';
+            document.getElementById('chart').style.display = 'none';
+        }
 
-                d3.select("#chart").selectAll("*").remove();
-                const svg = d3.select("#chart").append("svg")
-                    .attr("width", width).attr("height", height)
-                    .append("g").attr("transform", `translate(${width/2},${height/2})`);
+        function drawChart(dataTable) {
+            const data = dataTable.data.map(d => ({
+                label: d[0].formattedValue,
+                value: d[1].value
+            }));
 
-                // Modern UI Color Palette
-                const palette = ["#4e79a7", "#f28e2b", "#e15759", "#76b7b2", "#59a14f", "#edc948"];
+            const container = document.getElementById('chart');
+            const width = container.offsetWidth, height = container.offsetHeight;
+            const radius = Math.min(width, height) / 2 - 60;
 
-                // Create Radial Gradients (Middle to Outer)
-                const defs = svg.append("defs");
-                data.forEach((d, i) => {
-                    const grad = defs.append("radialGradient")
-                        .attr("id", `radial-${i}`)
-                        .attr("cx", "0").attr("cy", "0").attr("r", "100%")
-                        .attr("gradientUnits", "userSpaceOnUse");
+            d3.select("#chart").selectAll("*").remove();
+            const svg = d3.select("#chart").append("svg")
+                .attr("width", width).attr("height", height)
+                .append("g").attr("transform", `translate(${width/2},${height/2})`);
 
-                    // The "Glow" effect
-                    grad.append("stop").attr("offset", "30%").attr("stop-color", "#fff").attr("stop-opacity", 0.7);
-                    grad.append("stop").attr("offset", "100%").attr("stop-color", palette[i % palette.length]);
-                });
+            // Premium Palette
+            const colors = ["#FF6B6B", "#4D96FF", "#6BCB77", "#FFD93D", "#9b59b6", "#1abc9c"];
 
-                const pie = d3.pie().value(v => v.value).padAngle(0.04);
-                const arc = d3.arc().innerRadius(radius * 0.7).outerRadius(radius).cornerRadius(15);
+            const defs = svg.append("defs");
+            data.forEach((d, i) => {
+                const grad = defs.append("radialGradient")
+                    .attr("id", `grad-${i}`)
+                    .attr("cx", "0").attr("cy", "0").attr("r", "100%")
+                    .attr("gradientUnits", "userSpaceOnUse");
 
-                svg.selectAll("path").data(pie(data)).enter().append("path")
-                    .attr("d", arc)
-                    .attr("fill", (d, i) => `url(#radial-${i})`);
+                // Start white-ish at inner radius, fade to color at outer radius
+                grad.append("stop").attr("offset", "50%").attr("stop-color", "#fff").attr("stop-opacity", 0.6);
+                grad.append("stop").attr("offset", "100%").attr("stop-color", colors[i % colors.length]);
+            });
 
-                // Display Total in Middle
-                const total = d3.sum(data, d => d.value);
-                svg.append("text").attr("class", "center-val").attr("dy", "0.1em")
-                    .style("font-size", (radius * 0.25) + "px").text(total.toLocaleString());
-                
-                svg.append("text").attr("class", "center-label").attr("dy", "2.2em").text("Grand Total");
-            };
+            const pie = d3.pie().value(v => v.value).padAngle(0.04);
+            const arc = d3.arc().innerRadius(radius * 0.68).outerRadius(radius).cornerRadius(15);
 
-            render();
-            // Listen for changes
-            const ws = tableau.extensions.dashboardContent.dashboard.worksheets[0];
-            ws.addEventListener(tableau.TableauEventType.FilterChanged, render);
-            window.onresize = render;
-        });
+            svg.selectAll("path").data(pie(data)).enter().append("path")
+                .attr("d", arc)
+                .attr("fill", (d, i) => `url(#grad-${i})`);
+
+            // Central Value Logic
+            const total = d3.sum(data, d => d.value);
+            svg.append("text").attr("class", "center-val").attr("dy", "0.1em")
+                .style("font-size", (radius * 0.25) + "px").text(total.toLocaleString());
+            
+            svg.append("text").attr("class", "center-lab").attr("dy", "2.2em").text("Grand Total");
+        }
     </script>
 </body>
 </html>
