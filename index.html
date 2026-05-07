@@ -36,6 +36,9 @@
                     const map = {};
                     spec.marksSpecifications[spec.activeMarksSpecificationIndex].encodings.forEach(e => { map[e.id] = e.field; });
 
+                    // Ensure we only process if the core data fields are present
+                    if (!map.angle || !map.color) return;
+
                     const raw = page.data.map(r => ({
                         val: parseFloat(r[map.angle.index].nativeValue) || 0,
                         lab: r[map.color.index].formattedValue
