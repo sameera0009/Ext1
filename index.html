@@ -2,81 +2,53 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Futuristic Neon Donut Pro</title>
+    <title>Neon Donut by Sameera</title>
     <script src="https://cdn.jsdelivr.net/gh/tableau/extensions-api/lib/tableau.extensions.1.latest.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
     <style>
-        :root { --bg: #0b0e14; --cyan: #00f2ff; }
+        :root { --bg: #0b0e14; --neon: #00f2ff; }
         body, html { 
-            margin: 0; padding: 0; 
-            width: 100vw; height: 100vh;
-            background: var(--bg); 
-            color: white; 
-            font-family: 'Orbitron', sans-serif; 
-            overflow: hidden;
-            display: flex; justify-content: center; align-items: center;
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background: var(--bg); color: white; font-family: 'Orbitron', sans-serif; 
+            overflow: hidden; display: flex; justify-content: center; align-items: center;
         }
-        #content { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; position: relative; }
-        
-        /* Modern Tooltip */
-        .tooltip {
-            position: absolute;
-            padding: 10px;
-            background: rgba(11, 14, 20, 0.9);
-            border: 1px solid var(--cyan);
-            border-radius: 4px;
-            pointer-events: none;
-            opacity: 0;
-            font-size: 12px;
-            box-shadow: 0 0 15px rgba(0, 242, 255, 0.3);
-            z-index: 10;
+        #content { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
+        .arc { cursor: pointer; transition: filter 0.2s; stroke-linejoin: round; }
+        .arc:hover { filter: brightness(1.4) drop-shadow(0 0 10px var(--neon)); }
+        .center-val { fill: white; font-weight: bold; text-anchor: middle; text-shadow: 0 0 12px var(--neon); }
+        .center-lab { fill: #888; font-size: 11px; text-anchor: middle; text-transform: uppercase; letter-spacing: 2px; }
+        .tt {
+            position: fixed; pointer-events: none; opacity: 0;
+            background: rgba(0,0,0,0.85); border: 1px solid var(--neon);
+            padding: 10px; border-radius: 4px; font-size: 11px; z-index: 10;
+            box-shadow: 0 0 15px rgba(0,242,255,0.2);
         }
-
-        .arc { cursor: pointer; transition: filter 0.3s ease; stroke-linejoin: round; }
-        .arc:hover { filter: brightness(1.4) drop-shadow(0 0 10px var(--cyan)); }
-        
-        .value-text { fill: white; font-weight: bold; text-anchor: middle; text-shadow: 0 0 10px var(--cyan); pointer-events: none; }
-        .label-text { fill: #aaa; font-size: 12px; text-anchor: middle; text-transform: uppercase; pointer-events: none; }
     </style>
 </head>
 <body>
-    <div id="content">
-        <div class="tooltip" id="tooltip"></div>
-    </div>
+    <div id="content"></div>
+    <div class="tt" id="tt"></div>
 
     <script>
         'use strict';
-
         (function () {
-            let summaryData = [];
-            let encodingMap = {};
             let worksheet;
 
             window.onload = tableau.extensions.initializeAsync().then(() => {
                 worksheet = tableau.extensions.worksheetContent.worksheet;
-                
                 const update = async () => {
-                    [summaryData, encodingMap] = await Promise.all([
+                    const [data, encodings] = await Promise.all([
                         getSummaryDataTable(worksheet),
                         getEncodingMap(worksheet)
                     ]);
-                    renderDonut(summaryData, encodingMap);
+                    render(data, encodings);
                 };
-
-                // Listeners
-                onresize = () => renderDonut(summaryData, encodingMap);
                 worksheet.addEventListener(tableau.TableauEventType.SummaryDataChanged, update);
-                
-                // Settings Listener (User changes colors in Tableau settings)
-                tableau.extensions.settings.addEventListener(tableau.TableauEventType.SettingsChanged, (res) => {
-                    renderDonut(summaryData, encodingMap);
-                });
-
+                onresize = update;
                 update();
             });
 
-            // --- Data Fetching ---
             async function getSummaryDataTable(ws) {
                 let rows = [];
                 const reader = await ws.getSummaryDataReaderAsync(undefined, { ignoreSelection: true });
@@ -94,69 +66,67 @@
 
             async function getEncodingMap(ws) {
                 const spec = await ws.getVisualSpecificationAsync();
-                const map = {};
+                const map = { colors: {} };
                 if (spec.activeMarksSpecificationIndex < 0) return map;
-                spec.marksSpecifications[spec.activeMarksSpecificationIndex].encodings.forEach(e => { map[e.id] = e.field; });
+                const marks = spec.marksSpecifications[spec.activeMarksSpecificationIndex];
+                marks.encodings.forEach(e => { map[e.id] = e.field; });
+                if (marks.colorPalette) {
+                    marks.colorPalette.paletteEntries.forEach(entry => {
+                        map.colors[entry.value] = entry.color;
+                    });
+                }
                 return map;
             }
 
-            // --- Core Render ---
-            function renderDonut(data, encodings) {
-                const content = d3.select("#content");
-                const tooltip = d3.select("#tooltip");
-                content.selectAll("svg").remove();
+            function render(data, encodings) {
+                const container = d3.select("#content");
+                const tt = d3.select("#tt");
+                container.selectAll("svg").remove();
 
                 if (!encodings.angle || !encodings.color || data.length === 0) return;
 
-                // Process & Aggregate
                 const processed = data.map(d => ({
                     val: parseFloat(d[encodings.angle.name].nativeValue) || 0,
                     lab: d[encodings.color.name].formattedValue
                 }));
+
                 const finalData = Array.from(d3.rollup(processed, v => d3.sum(v, d => d.val), d => d.lab), ([lab, val]) => ({ lab, val }));
+                const total = d3.sum(finalData, d => d.val);
 
-                const width = window.innerWidth, height = window.innerHeight;
-                const radius = Math.min(width, height) / 2.8;
+                const w = window.innerWidth, h = window.innerHeight;
+                const radius = Math.min(w, h) / 2.8;
 
-                // Get Custom Background from Settings (Fallback to Cyber-black)
-                const bgColor = tableau.extensions.settings.get("bg-color") || "#0b0e14";
-                d3.select("body").style("background-color", bgColor);
+                const svg = container.append("svg").attr("width", w).attr("height", h)
+                    .append("g").attr("transform", `translate(${w/2},${h/2})`);
 
-                const svg = content.append("svg").attr("width", width).attr("height", height)
-                    .append("g").attr("transform", `translate(${width/2},${height/2})`);
+                // CUSTOM NEON COLORS (Not available in Tableau)
+                const myCustomNeonColors = ["#00f2ff", "#ff007c", "#7000ff", "#00ff95", "#ffcf00", "#ff4500"];
+                const colorScale = d3.scaleOrdinal().range(myCustomNeonColors);
 
-                const colors = d3.scaleOrdinal().range(["#00f2ff", "#7000ff", "#ff007c", "#00ff95", "#ffcf00"]);
-                const pie = d3.pie().value(d => d.val).padAngle(0.04);
-                const arc = d3.arc().innerRadius(radius * 0.72).outerRadius(radius).cornerRadius(10);
+                const pie = d3.pie().value(d => d.val).padAngle(0.05);
+                const arc = d3.arc().innerRadius(radius * 0.72).outerRadius(radius).cornerRadius(12);
 
-                const slices = svg.selectAll(".arc").data(pie(finalData)).enter().append("path")
-                    .attr("class", "arc").attr("d", arc)
-                    .attr("fill", d => colors(d.data.lab))
-                    .style("stroke", bgColor).style("stroke-width", "3px");
+                svg.selectAll("path").data(pie(finalData)).enter().append("path")
+                    .attr("class", "arc")
+                    .attr("d", arc)
+                    .attr("fill", d => encodings.colors[d.data.lab] || colorScale(d.data.lab))
+                    .style("stroke", "#0b0e14").style("stroke-width", "4px")
+                    .on("mouseover", (e, d) => {
+                        tt.style("opacity", 1).html(`<b>${d.data.lab}</b><br>${d.data.val.toLocaleString()}`);
+                        svg.select(".center-val").text(d.data.val.toLocaleString());
+                        svg.select(".center-lab").text(d.data.lab);
+                    })
+                    .on("mousemove", (e) => tt.style("left", (e.pageX+15)+"px").style("top", (e.pageY-15)+"px"))
+                    .on("mouseout", () => {
+                        tt.style("opacity", 0);
+                        svg.select(".center-val").text(total.toLocaleString());
+                        svg.select(".center-lab").text("TOTAL");
+                    });
 
-                // Tooltip Interactions
-                slices.on("mouseover", (e, d) => {
-                    tooltip.style("opacity", 1).html(`<strong>${d.data.lab}</strong><br/>Value: ${d.data.val.toLocaleString()}`);
-                    // Dynamic Center Text update
-                    svg.select(".value-text").text(d.data.val.toLocaleString());
-                    svg.select(".label-text").text(d.data.lab);
-                })
-                .on("mousemove", (e) => {
-                    tooltip.style("left", (e.pageX + 15) + "px").style("top", (e.pageY - 15) + "px");
-                })
-                .on("mouseout", () => {
-                    tooltip.style("opacity", 0);
-                    svg.select(".value-text").text(d3.sum(finalData, d => d.val).toLocaleString());
-                    svg.select(".label-text").text("TOTAL");
-                });
-
-                // Value in Center (No more 'Analysis' text)
-                svg.append("text").attr("class", "value-text").attr("dy", "0.05em")
-                    .style("font-size", (radius * 0.18) + "px")
-                    .text(d3.sum(finalData, d => d.val).toLocaleString());
+                svg.append("text").attr("class", "center-val").attr("dy", "0.1em")
+                    .style("font-size", (radius * 0.18) + "px").text(total.toLocaleString());
                 
-                svg.append("text").attr("class", "label-text").attr("dy", "1.8em")
-                    .text("TOTAL");
+                svg.append("text").attr("class", "center-lab").attr("dy", "2.2em").text("TOTAL");
             }
         })();
     </script>
