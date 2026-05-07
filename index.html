@@ -2,165 +2,79 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Futuristic Neon Donut</title>
-    
     <script src="https://cdn.jsdelivr.net/gh/tableau/extensions-api/lib/tableau.extensions.1.latest.js"></script>
     <script src="https://d3js.org/d3.v7.min.js"></script>
-    
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
-
     <style>
-        :root {
-            --bg-color: #0b0e14;
-            --neon-cyan: #00f2ff;
-            --text-color: #ffffff;
-        }
-
-        body, html {
-            margin: 0; padding: 0;
-            width: 100%; height: 100%;
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            font-family: 'Orbitron', sans-serif;
-            overflow: hidden;
-        }
-
-        #viz {
-            width: 100vw; height: 100vh;
-            display: flex; justify-content: center; align-items: center;
-        }
-
-        .arc { cursor: pointer; transition: filter 0.3s ease; }
-        .arc:hover { filter: brightness(1.6) drop-shadow(0 0 15px var(--neon-cyan)); }
-
-        .center-label {
-            fill: var(--text-color);
-            font-weight: bold;
-            text-shadow: 0 0 15px var(--neon-cyan);
-            text-transform: uppercase;
-            letter-spacing: 3px;
-            pointer-events: none;
-        }
-
-        .message-overlay {
-            fill: #555;
-            font-size: 14px;
-            text-anchor: middle;
-            text-transform: uppercase;
-        }
+        :root { --bg: #0b0e14; --cyan: #00f2ff; }
+        body, html { margin: 0; padding: 0; background: var(--bg); color: white; font-family: 'Orbitron', sans-serif; overflow: hidden; }
+        #viz { width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
+        .arc:hover { filter: brightness(1.5) drop-shadow(0 0 10px var(--cyan)); cursor: pointer; }
+        .center-label { fill: white; font-weight: bold; text-shadow: 0 0 15px var(--cyan); text-anchor: middle; }
     </style>
 </head>
 <body>
-
     <div id="viz"></div>
-
     <script>
         'use strict';
-
         (function () {
             let worksheet;
 
-            // 1. Initialize Extension based on Documentation
             window.onload = tableau.extensions.initializeAsync().then(() => {
                 worksheet = tableau.extensions.worksheetContent.worksheet;
-                
-                // Initial render
-                fetchDataAndRender();
-
-                // 2. Add Event Listener for live updates (filtering/drags)
-                worksheet.addEventListener(tableau.TableauEventType.SummaryDataChanged, fetchDataAndRender);
-            }, (err) => {
-                console.error("Tableau Init Failed:", err.toString());
+                fetchAndDraw();
+                worksheet.addEventListener(tableau.TableauEventType.SummaryDataChanged, fetchAndDraw);
             });
 
-            async function fetchDataAndRender() {
-                try {
-                    // 3. Access Data Reader
-                    const dataReader = await worksheet.getSummaryDataReaderAsync();
-                    const page = await dataReader.getAllPagesAsync();
-                    
-                    // Check if we actually have data rows and at least two columns
-                    if (page.data.length > 0 && page.columns.length >= 2) {
-                        
-                        // Map: Column 0 (Measure/Angle), Column 1 (Dimension/Color)
-                        const rawData = page.data.map(row => ({
-                            value: parseFloat(row[0].nativeValue) || 0,
-                            label: row[1].formattedValue || "Unknown"
-                        }));
+            async function fetchAndDraw() {
+                const reader = await worksheet.getSummaryDataReaderAsync();
+                const page = await reader.getAllPagesAsync();
+                
+                // DATA CLEANING: Logic to ensure we have a valid Number and a valid Label
+                const processedData = page.data.map(row => {
+                    // Try to find which column is the number (nativeValue)
+                    const val0 = parseFloat(row[0].nativeValue);
+                    const val1 = parseFloat(row[1].nativeValue);
 
-                        // Aggregate data using D3 Rollup (sum values per label)
-                        const aggregatedData = Array.from(
-                            d3.rollup(rawData, v => d3.sum(v, d => d.value), d => d.label),
-                            ([label, value]) => ({ label, value })
-                        ).filter(d => d.value > 0);
+                    return {
+                        value: isNaN(val0) ? (isNaN(val1) ? 0 : val1) : val0,
+                        label: isNaN(val0) ? row[0].formattedValue : row[1].formattedValue
+                    };
+                }).filter(d => d.value > 0);
 
-                        drawDonut(aggregatedData);
-                    } else {
-                        renderMessage("Waiting for Data... Drag fields to Marks Card");
-                    }
+                // Group by Category (Rollup)
+                const finalData = Array.from(
+                    d3.rollup(processedData, v => d3.sum(v, d => d.value), d => d.label),
+                    ([label, value]) => ({ label, value })
+                );
 
-                    await dataReader.releaseAsync();
-                } catch (error) {
-                    console.error("Render Error:", error);
-                    renderMessage("Error loading data. Check console.");
-                }
+                renderChart(finalData);
+                await reader.releaseAsync();
             }
 
-            function renderMessage(msg) {
+            function renderChart(data) {
                 const container = d3.select("#viz");
                 container.selectAll("*").remove();
-                const width = window.innerWidth, height = window.innerHeight;
-                const svg = container.append("svg").attr("width", width).attr("height", height);
-                svg.append("text")
-                    .attr("x", width / 2).attr("y", height / 2)
-                    .attr("class", "message-overlay")
-                    .text(msg);
+                if (data.length === 0) return;
+
+                const w = window.innerWidth, h = window.innerHeight;
+                const radius = Math.min(w, h) / 2.8;
+                const svg = container.append("svg").attr("width", w).attr("height", h)
+                             .append("g").attr("transform", `translate(${w/2},${h/2})`);
+
+                const colors = d3.scaleOrdinal().range(["#00f2ff", "#7000ff", "#ff007c", "#00ff95", "#ffcf00"]);
+                const pie = d3.pie().value(d => d.value).padAngle(0.05);
+                const arc = d3.arc().innerRadius(radius * 0.7).outerRadius(radius).cornerRadius(12);
+
+                svg.selectAll("path").data(pie(data)).enter().append("path")
+                   .attr("class", "arc").attr("d", arc).attr("fill", d => colors(d.data.label))
+                   .style("stroke", "#0b0e14").style("stroke-width", "4px");
+
+                svg.append("text").attr("class", "center-label").attr("dy", "0.35em")
+                   .style("font-size", (radius * 0.15) + "px").text("ANALYSIS");
             }
-
-            function drawDonut(data) {
-                const container = d3.select("#viz");
-                container.selectAll("*").remove();
-
-                const width = window.innerWidth;
-                const height = window.innerHeight;
-                const radius = Math.min(width, height) / 2.8;
-
-                const svg = container.append("svg")
-                    .attr("width", width).attr("height", height)
-                    .append("g")
-                    .attr("transform", `translate(${width / 2}, ${height / 2})`);
-
-                // Futuristic Palette
-                const colorScale = d3.scaleOrdinal()
-                    .range(["#00f2ff", "#7000ff", "#ff007c", "#00ff95", "#ffcf00", "#0078ff"]);
-
-                const pie = d3.pie().value(d => d.value).sort(null).padAngle(0.05);
-                const arc = d3.arc().innerRadius(radius * 0.72).outerRadius(radius).cornerRadius(15);
-
-                // Add Slices
-                svg.selectAll(".arc")
-                    .data(pie(data))
-                    .enter()
-                    .append("path")
-                    .attr("class", "arc")
-                    .attr("d", arc)
-                    .attr("fill", d => colorScale(d.data.label))
-                    .style("stroke", "#0b0e14")
-                    .style("stroke-width", "5px");
-
-                // Central Label
-                svg.append("text")
-                    .attr("class", "center-label")
-                    .attr("text-anchor", "middle")
-                    .attr("dy", "0.35em")
-                    .style("font-size", Math.max(12, radius * 0.16) + "px")
-                    .text("ANALYSIS");
-            }
-
-            // Auto-resize on window change
-            window.onresize = () => { if(worksheet) fetchDataAndRender(); };
-
+            window.onresize = fetchAndDraw;
         })();
     </script>
 </body>
