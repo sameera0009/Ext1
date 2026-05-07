@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Futuristic Neon Donut</title>
+    
     <script src="https://cdn.jsdelivr.net/gh/tableau/extensions-api/lib/tableau.extensions.1.latest.js"></script>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     
@@ -12,38 +14,25 @@
         :root {
             --bg-color: #0b0e14;
             --neon-cyan: #00f2ff;
-            --neon-magenta: #ff007c;
-            --neon-purple: #7000ff;
             --text-color: #ffffff;
         }
 
         body, html {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
+            margin: 0; padding: 0;
+            width: 100%; height: 100%;
             background-color: var(--bg-color);
             color: var(--text-color);
             font-family: 'Orbitron', sans-serif;
             overflow: hidden;
-            display: flex;
-            justify-content: center;
-            align-items: center;
         }
 
         #viz {
-            width: 100vw;
-            height: 100vh;
+            width: 100vw; height: 100vh;
+            display: flex; justify-content: center; align-items: center;
         }
 
-        .arc {
-            cursor: pointer;
-            transition: filter 0.3s ease;
-        }
-
-        .arc:hover {
-            filter: brightness(1.5) drop-shadow(0 0 12px var(--neon-cyan));
-        }
+        .arc { cursor: pointer; transition: filter 0.3s ease; }
+        .arc:hover { filter: brightness(1.6) drop-shadow(0 0 15px var(--neon-cyan)); }
 
         .center-label {
             fill: var(--text-color);
@@ -54,10 +43,11 @@
             pointer-events: none;
         }
 
-        .no-data-msg {
-            fill: #666;
-            font-size: 16px;
+        .message-overlay {
+            fill: #555;
+            font-size: 14px;
             text-anchor: middle;
+            text-transform: uppercase;
         }
     </style>
 </head>
@@ -71,72 +61,61 @@
         (function () {
             let worksheet;
 
-            // 1. Initialize the Extension
+            // 1. Initialize Extension based on Documentation
             window.onload = tableau.extensions.initializeAsync().then(() => {
                 worksheet = tableau.extensions.worksheetContent.worksheet;
-
-                // Initial Draw
+                
+                // Initial render
                 fetchDataAndRender();
 
-                // 2. Listen for Data Changes
+                // 2. Add Event Listener for live updates (filtering/drags)
                 worksheet.addEventListener(tableau.TableauEventType.SummaryDataChanged, fetchDataAndRender);
             }, (err) => {
-                console.error("Error initializing Extension:", err.toString());
+                console.error("Tableau Init Failed:", err.toString());
             });
 
             async function fetchDataAndRender() {
                 try {
-                    const visualSpec = await worksheet.getVisualSpecificationAsync();
-                    const marksCard = visualSpec.marksSpecifications[visualSpec.activeMarksSpecificationIndex];
-                    
-                    // Identify indices for Angle and Color slots from .trex IDs
-                    const angleSpec = marksCard.encodings.find(e => e.id === 'angle');
-                    const colorSpec = marksCard.encodings.find(e => e.id === 'color');
-
-                    // If slots are empty, clear chart and show message
-                    if (!angleSpec || !colorSpec || angleSpec.field.index === -1 || colorSpec.field.index === -1) {
-                        showNoDataMessage();
-                        return;
-                    }
-
-                    const angleIndex = angleSpec.field.index;
-                    const colorIndex = colorSpec.field.index;
-
-                    // Fetch data
+                    // 3. Access Data Reader
                     const dataReader = await worksheet.getSummaryDataReaderAsync();
                     const page = await dataReader.getAllPagesAsync();
                     
-                    // Map data to objects
-                    const rawData = page.data.map(row => ({
-                        value: parseFloat(row[angleIndex].nativeValue) || 0,
-                        label: row[colorIndex].formattedValue || "Unknown"
-                    }));
+                    // Check if we actually have data rows and at least two columns
+                    if (page.data.length > 0 && page.columns.length >= 2) {
+                        
+                        // Map: Column 0 (Measure/Angle), Column 1 (Dimension/Color)
+                        const rawData = page.data.map(row => ({
+                            value: parseFloat(row[0].nativeValue) || 0,
+                            label: row[1].formattedValue || "Unknown"
+                        }));
 
-                    // Rollup/Aggregate data by label
-                    const aggregatedData = Array.from(
-                        d3.rollup(rawData, v => d3.sum(v, d => d.value), d => d.label),
-                        ([label, value]) => ({ label, value })
-                    ).filter(d => d.value > 0);
+                        // Aggregate data using D3 Rollup (sum values per label)
+                        const aggregatedData = Array.from(
+                            d3.rollup(rawData, v => d3.sum(v, d => d.value), d => d.label),
+                            ([label, value]) => ({ label, value })
+                        ).filter(d => d.value > 0);
 
-                    drawDonut(aggregatedData);
+                        drawDonut(aggregatedData);
+                    } else {
+                        renderMessage("Waiting for Data... Drag fields to Marks Card");
+                    }
 
                     await dataReader.releaseAsync();
                 } catch (error) {
-                    console.error("Critical Render Error:", error);
+                    console.error("Render Error:", error);
+                    renderMessage("Error loading data. Check console.");
                 }
             }
 
-            function showNoDataMessage() {
+            function renderMessage(msg) {
                 const container = d3.select("#viz");
                 container.selectAll("*").remove();
                 const width = window.innerWidth, height = window.innerHeight;
                 const svg = container.append("svg").attr("width", width).attr("height", height);
-                
                 svg.append("text")
-                    .attr("x", width / 2)
-                    .attr("y", height / 2)
-                    .attr("class", "no-data-msg")
-                    .text("Drag a Measure to 'Arc Size' and Dimension to 'Categories'");
+                    .attr("x", width / 2).attr("y", height / 2)
+                    .attr("class", "message-overlay")
+                    .text(msg);
             }
 
             function drawDonut(data) {
@@ -148,8 +127,7 @@
                 const radius = Math.min(width, height) / 2.8;
 
                 const svg = container.append("svg")
-                    .attr("width", width)
-                    .attr("height", height)
+                    .attr("width", width).attr("height", height)
                     .append("g")
                     .attr("transform", `translate(${width / 2}, ${height / 2})`);
 
@@ -157,17 +135,10 @@
                 const colorScale = d3.scaleOrdinal()
                     .range(["#00f2ff", "#7000ff", "#ff007c", "#00ff95", "#ffcf00", "#0078ff"]);
 
-                const pie = d3.pie()
-                    .value(d => d.value)
-                    .sort(null)
-                    .padAngle(0.05);
+                const pie = d3.pie().value(d => d.value).sort(null).padAngle(0.05);
+                const arc = d3.arc().innerRadius(radius * 0.72).outerRadius(radius).cornerRadius(15);
 
-                const arc = d3.arc()
-                    .innerRadius(radius * 0.7)
-                    .outerRadius(radius)
-                    .cornerRadius(12);
-
-                // Add slices with glow/neon style
+                // Add Slices
                 svg.selectAll(".arc")
                     .data(pie(data))
                     .enter()
@@ -176,18 +147,18 @@
                     .attr("d", arc)
                     .attr("fill", d => colorScale(d.data.label))
                     .style("stroke", "#0b0e14")
-                    .style("stroke-width", "4px");
+                    .style("stroke-width", "5px");
 
-                // Central Glow Text
+                // Central Label
                 svg.append("text")
                     .attr("class", "center-label")
                     .attr("text-anchor", "middle")
                     .attr("dy", "0.35em")
-                    .style("font-size", Math.max(12, radius * 0.15) + "px")
+                    .style("font-size", Math.max(12, radius * 0.16) + "px")
                     .text("ANALYSIS");
             }
 
-            // Handle browser resizing
+            // Auto-resize on window change
             window.onresize = () => { if(worksheet) fetchDataAndRender(); };
 
         })();
