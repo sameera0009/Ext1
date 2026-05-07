@@ -1,41 +1,82 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
     <meta charset="UTF-8">
     <title>Modern Gradient Donut</title>
     <script src="https://cdn.jsdelivr.net/gh/tableau/extensions-api-js@main/lib/tableau.extensions.1.latest.js"></script>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; overflow: hidden; background-color: transparent; }
-        #chart-container { display: flex; justify-content: center; align-items: center; height: 100vh; width: 100vw; }
-        .center-label { font-weight: bold; fill: #333; text-anchor: middle; transition: all 0.3s ease; }
-        .slice:hover { filter: brightness(1.1); cursor: pointer; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: transparent; /* Allows Tableau background to show */
+        }
+        #chart-container {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .center-text-value {
+            font-size: 28px;
+            font-weight: 800;
+            fill: #2c3e50;
+        }
+        .center-text-label {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            fill: #7f8c8d;
+        }
+        .slice {
+            transition: transform 0.2s ease-in-out;
+            cursor: pointer;
+        }
+        .slice:hover {
+            transform: scale(1.03);
+            filter: saturate(1.2);
+        }
     </style>
 </head>
 <body>
     <div id="chart-container"></div>
 
     <script>
+        // Initialize Tableau Extension
         tableau.extensions.initializeAsync().then(() => {
-            renderChart();
+            drawChart();
+            // Redraw when the window resizes or data changes
+            window.addEventListener('resize', drawChart);
+            const worksheet = tableau.extensions.dashboardContent.dashboard.worksheets[0];
+            worksheet.addEventListener(tableau.TableauEventType.FilterChanged, drawChart);
         });
 
-        async function renderChart() {
+        async function drawChart() {
+            const container = document.getElementById('chart-container');
+            const width = container.offsetWidth;
+            const height = container.offsetHeight;
+            const radius = Math.min(width, height) / 2 - 40;
+
+            // Clear previous chart
+            d3.select("#chart-container").selectAll("*").remove();
+
             const worksheet = tableau.extensions.dashboardContent.dashboard.worksheets[0];
-            const dataTable = await worksheet.getSummaryDataAsync();
-            
-            // Mocking data structure for demo - Map your Tableau columns here
-            const data = dataTable.data.map(row => ({
-                name: row[0].formattedValue,
+            const summaryData = await worksheet.getSummaryDataAsync();
+
+            // Map data: Assumes Col 0 is Label, Col 1 is Value
+            // Optional: Col 2 can be a Hex Color code
+            const data = summaryData.data.map(row => ({
+                label: row[0].formattedValue,
                 value: row[1].value,
-                // In a real scenario, you could pull hex codes from a 3rd column
-                color: "#" + Math.floor(Math.random()*16777215).toString(16) 
+                color: row[2] ? row[2].formattedValue : null 
             }));
 
-            const width = 400, height = 400, margin = 40;
-            const radius = Math.min(width, height) / 2 - margin;
+            // Fallback Modern Color Palette
+            const colorScale = d3.scaleOrdinal(d3.schemeTableau10);
 
-            d3.select("#chart-container").selectAll("*").remove();
             const svg = d3.select("#chart-container")
                 .append("svg")
                 .attr("width", width)
@@ -43,48 +84,52 @@
                 .append("g")
                 .attr("transform", `translate(${width / 2}, ${height / 2})`);
 
-            // 1. Create Gradients
+            // 1. Setup Radial Gradients
             const defs = svg.append("defs");
             data.forEach((d, i) => {
+                const baseColor = d.color || colorScale(i);
                 const grad = defs.append("radialGradient")
                     .attr("id", `grad-${i}`)
                     .attr("cx", "0").attr("cy", "0").attr("r", "100%")
                     .attr("gradientUnits", "userSpaceOnUse");
 
-                // Middle (light/white-ish for glow) to Outer (Slice Color)
-                grad.append("stop").attr("offset", "30%").attr("stop-color", "white").attr("stop-opacity", 0.3);
-                grad.append("stop").attr("offset", "100%").attr("stop-color", d.color);
+                // Gradient from middle (lighter) to outer (set color)
+                grad.append("stop").attr("offset", "20%").attr("stop-color", "#ffffff").attr("stop-opacity", 0.4);
+                grad.append("stop").attr("offset", "100%").attr("stop-color", baseColor);
             });
 
-            // 2. Shape Logic
-            const pie = d3.pie().value(d => d.value).sort(null);
-            const arc = d3.arc().innerRadius(radius * 0.65).outerRadius(radius).cornerRadius(8);
+            // 2. Define Pie and Arc
+            const pie = d3.pie().value(d => d.value).padAngle(0.03);
+            const arc = d3.arc()
+                .innerRadius(radius * 0.7) // Thickness of donut
+                .outerRadius(radius)
+                .cornerRadius(10); // Rounded corners for modern UI
 
             // 3. Draw Slices
-            svg.selectAll('path')
+            svg.selectAll("path")
                 .data(pie(data))
                 .enter()
-                .append('path')
-                .attr('d', arc)
-                .attr('fill', (d, i) => `url(#grad-${i})`)
+                .append("path")
+                .attr("d", arc)
+                .attr("fill", (d, i) => `url(#grad-${i})`)
                 .attr("class", "slice")
-                .style("stroke", "white")
+                .attr("stroke", "#fff")
                 .style("stroke-width", "2px");
 
-            // 4. Center Label
+            // 4. Center Labels
             const total = d3.sum(data, d => d.value);
-            svg.append("text")
-                .attr("class", "center-label")
-                .attr("dy", "0.35em")
-                .style("font-size", "24px")
-                .text(total.toLocaleString());
             
             svg.append("text")
-                .attr("dy", "2em")
-                .style("text-anchor", "middle")
-                .style("font-size", "12px")
-                .style("fill", "#999")
-                .text("TOTAL");
+                .attr("text-anchor", "middle")
+                .attr("class", "center-text-value")
+                .attr("dy", "0.1em")
+                .text(total.toLocaleString());
+
+            svg.append("text")
+                .attr("text-anchor", "middle")
+                .attr("class", "center-text-label")
+                .attr("dy", "1.8em")
+                .text("Total Value");
         }
     </script>
 </body>
