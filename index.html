@@ -3,11 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <title>Futuristic Neon Donut</title>
-    <!-- External Libraries -->
     <script src="https://cdn.jsdelivr.net/gh/tableau/extensions-api/lib/tableau.extensions.1.latest.js"></script>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     
-    <!-- Futuristic Typography -->
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
 
     <style>
@@ -38,27 +36,27 @@
             height: 100vh;
         }
 
-        /* Modern hover transition */
         .arc {
             cursor: pointer;
-            transition: filter 0.3s ease, transform 0.3s ease;
+            transition: filter 0.3s ease;
         }
 
         .arc:hover {
-            filter: brightness(1.4) drop-shadow(0 0 8px var(--neon-cyan));
+            filter: brightness(1.5) drop-shadow(0 0 12px var(--neon-cyan));
         }
 
         .center-label {
             fill: var(--text-color);
             font-weight: bold;
-            text-shadow: 0 0 10px var(--neon-cyan);
+            text-shadow: 0 0 15px var(--neon-cyan);
             text-transform: uppercase;
-            letter-spacing: 2px;
+            letter-spacing: 3px;
+            pointer-events: none;
         }
 
-        .no-data {
-            fill: #444;
-            font-size: 14px;
+        .no-data-msg {
+            fill: #666;
+            font-size: 16px;
             text-anchor: middle;
         }
     </style>
@@ -80,7 +78,7 @@
                 // Initial Draw
                 fetchDataAndRender();
 
-                // 2. Listen for Data Changes (when user drops fields or filters)
+                // 2. Listen for Data Changes
                 worksheet.addEventListener(tableau.TableauEventType.SummaryDataChanged, fetchDataAndRender);
             }, (err) => {
                 console.error("Error initializing Extension:", err.toString());
@@ -88,34 +86,57 @@
 
             async function fetchDataAndRender() {
                 try {
-                    // 3. Get Visual Spec to see which fields are in which 'encoding' id
                     const visualSpec = await worksheet.getVisualSpecificationAsync();
-                    
-                    // Find our IDs from the .trex file
                     const marksCard = visualSpec.marksSpecifications[visualSpec.activeMarksSpecificationIndex];
-                    const angleEncoding = marksCard.encodings.find(e => e.id === 'angle');
-                    const colorEncoding = marksCard.encodings.find(e => e.id === 'color');
+                    
+                    // Identify indices for Angle and Color slots from .trex IDs
+                    const angleSpec = marksCard.encodings.find(e => e.id === 'angle');
+                    const colorSpec = marksCard.encodings.find(e => e.id === 'color');
 
-                    // 4. Get the actual data
+                    // If slots are empty, clear chart and show message
+                    if (!angleSpec || !colorSpec || angleSpec.field.index === -1 || colorSpec.field.index === -1) {
+                        showNoDataMessage();
+                        return;
+                    }
+
+                    const angleIndex = angleSpec.field.index;
+                    const colorIndex = colorSpec.field.index;
+
+                    // Fetch data
                     const dataReader = await worksheet.getSummaryDataReaderAsync();
                     const page = await dataReader.getAllPagesAsync();
                     
-                    // Map data to a simple array
-                    const chartData = page.data.map(row => {
-                        return {
-                            // We assume row[0] is Angle and row[1] is Color based on typical drop order
-                            // In a robust app, you'd map these via visualSpec indices
-                            value: row[0].nativeValue || 0,
-                            label: row[1].formattedValue || "Unknown"
-                        };
-                    });
+                    // Map data to objects
+                    const rawData = page.data.map(row => ({
+                        value: parseFloat(row[angleIndex].nativeValue) || 0,
+                        label: row[colorIndex].formattedValue || "Unknown"
+                    }));
 
-                    drawDonut(chartData);
+                    // Rollup/Aggregate data by label
+                    const aggregatedData = Array.from(
+                        d3.rollup(rawData, v => d3.sum(v, d => d.value), d => d.label),
+                        ([label, value]) => ({ label, value })
+                    ).filter(d => d.value > 0);
+
+                    drawDonut(aggregatedData);
 
                     await dataReader.releaseAsync();
                 } catch (error) {
-                    console.error("Data fetch error:", error);
+                    console.error("Critical Render Error:", error);
                 }
+            }
+
+            function showNoDataMessage() {
+                const container = d3.select("#viz");
+                container.selectAll("*").remove();
+                const width = window.innerWidth, height = window.innerHeight;
+                const svg = container.append("svg").attr("width", width).attr("height", height);
+                
+                svg.append("text")
+                    .attr("x", width / 2)
+                    .attr("y", height / 2)
+                    .attr("class", "no-data-msg")
+                    .text("Drag a Measure to 'Arc Size' and Dimension to 'Categories'");
             }
 
             function drawDonut(data) {
@@ -124,7 +145,7 @@
 
                 const width = window.innerWidth;
                 const height = window.innerHeight;
-                const radius = Math.min(width, height) / 2.5;
+                const radius = Math.min(width, height) / 2.8;
 
                 const svg = container.append("svg")
                     .attr("width", width)
@@ -132,26 +153,22 @@
                     .append("g")
                     .attr("transform", `translate(${width / 2}, ${height / 2})`);
 
-                if (data.length === 0) {
-                    svg.append("text").attr("class", "no-data").text("Drop fields into Arc Size and Categories");
-                    return;
-                }
-
                 // Futuristic Palette
                 const colorScale = d3.scaleOrdinal()
                     .range(["#00f2ff", "#7000ff", "#ff007c", "#00ff95", "#ffcf00", "#0078ff"]);
 
                 const pie = d3.pie()
                     .value(d => d.value)
-                    .padAngle(0.04); // Space between slices
+                    .sort(null)
+                    .padAngle(0.05);
 
                 const arc = d3.arc()
-                    .innerRadius(radius * 0.65) // Donut hole size
+                    .innerRadius(radius * 0.7)
                     .outerRadius(radius)
-                    .cornerRadius(8); // Rounded corners for modern feel
+                    .cornerRadius(12);
 
-                // Create slices
-                const path = svg.selectAll(".arc")
+                // Add slices with glow/neon style
+                svg.selectAll(".arc")
                     .data(pie(data))
                     .enter()
                     .append("path")
@@ -159,18 +176,18 @@
                     .attr("d", arc)
                     .attr("fill", d => colorScale(d.data.label))
                     .style("stroke", "#0b0e14")
-                    .style("stroke-width", "3px");
+                    .style("stroke-width", "4px");
 
-                // Add center text
+                // Central Glow Text
                 svg.append("text")
                     .attr("class", "center-label")
                     .attr("text-anchor", "middle")
-                    .attr("dy", "0.3em")
-                    .style("font-size", radius * 0.12 + "px")
+                    .attr("dy", "0.35em")
+                    .style("font-size", Math.max(12, radius * 0.15) + "px")
                     .text("ANALYSIS");
             }
 
-            // Redraw on window resize
+            // Handle browser resizing
             window.onresize = () => { if(worksheet) fetchDataAndRender(); };
 
         })();
