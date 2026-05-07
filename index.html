@@ -14,71 +14,118 @@
             overflow: hidden; display: flex; justify-content: center; align-items: center;
         }
         #content { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
-        .arc { cursor: pointer; transition: 0.3s; stroke-linejoin: round; }
-        .arc:hover { filter: brightness(1.5) drop-shadow(0 0 12px var(--neon)); }
-        .center-val { fill: white; font-weight: bold; text-anchor: middle; text-shadow: 0 0 15px var(--neon); }
-        .center-lab { fill: #666; font-size: 11px; text-anchor: middle; text-transform: uppercase; letter-spacing: 2px; }
+        .arc { cursor: pointer; transition: filter 0.2s; stroke-linejoin: round; }
+        .arc:hover { filter: brightness(1.4) drop-shadow(0 0 10px var(--neon)); }
+        .center-val { fill: white; font-weight: bold; text-anchor: middle; text-shadow: 0 0 12px var(--neon); }
+        .center-lab { fill: #888; font-size: 11px; text-anchor: middle; text-transform: uppercase; letter-spacing: 2px; }
+        .tt {
+            position: fixed; pointer-events: none; opacity: 0;
+            background: rgba(0,0,0,0.85); border: 1px solid var(--neon);
+            padding: 10px; border-radius: 4px; font-size: 11px; z-index: 10;
+            box-shadow: 0 0 15px rgba(0,242,255,0.2);
+        }
     </style>
 </head>
 <body>
     <div id="content"></div>
+    <div class="tt" id="tt"></div>
+
     <script>
         'use strict';
         (function () {
             let worksheet;
+
             window.onload = tableau.extensions.initializeAsync().then(() => {
                 worksheet = tableau.extensions.worksheetContent.worksheet;
                 const update = async () => {
-                    const reader = await worksheet.getSummaryDataReaderAsync(undefined, { ignoreSelection: true });
-                    const page = await reader.getPageAsync(0);
-                    const spec = await worksheet.getVisualSpecificationAsync();
-                    
-                    const map = {};
-                    spec.marksSpecifications[spec.activeMarksSpecificationIndex].encodings.forEach(e => { map[e.id] = e.field; });
-
-                    // Ensure we only process if the core data fields are present
-                    if (!map.angle || !map.color) return;
-
-                    const raw = page.data.map(r => ({
-                        val: parseFloat(r[map.angle.index].nativeValue) || 0,
-                        lab: r[map.color.index].formattedValue
-                    }));
-
-                    const data = Array.from(d3.rollup(raw, v => d3.sum(v, d => d.val), d => d.lab), ([lab, val]) => ({ lab, val }));
-                    render(data, d3.sum(data, d => d.val));
-                    await reader.releaseAsync();
+                    const [data, encodings] = await Promise.all([
+                        getSummaryDataTable(worksheet),
+                        getEncodingMap(worksheet)
+                    ]);
+                    render(data, encodings);
                 };
                 worksheet.addEventListener(tableau.TableauEventType.SummaryDataChanged, update);
-                onresize = update; update();
+                onresize = update;
+                update();
             });
 
-            function render(data, total) {
-                const svgContainer = d3.select("#content");
-                svgContainer.selectAll("*").remove();
-                if (data.length === 0) return;
+            async function getSummaryDataTable(ws) {
+                let rows = [];
+                const reader = await ws.getSummaryDataReaderAsync(undefined, { ignoreSelection: true });
+                for (let i = 0; i < reader.pageCount; i++) {
+                    const page = await reader.getPageAsync(i);
+                    rows = rows.concat(page.data.map(r => {
+                        const row = {};
+                        page.columns.forEach((col, idx) => { row[col.fieldName] = r[idx]; });
+                        return row;
+                    }));
+                }
+                await reader.releaseAsync();
+                return rows;
+            }
+
+            async function getEncodingMap(ws) {
+                const spec = await ws.getVisualSpecificationAsync();
+                const map = { colors: {} };
+                if (spec.activeMarksSpecificationIndex < 0) return map;
+                const marks = spec.marksSpecifications[spec.activeMarksSpecificationIndex];
+                marks.encodings.forEach(e => { map[e.id] = e.field; });
+                if (marks.colorPalette) {
+                    marks.colorPalette.paletteEntries.forEach(entry => {
+                        map.colors[entry.value] = entry.color;
+                    });
+                }
+                return map;
+            }
+
+            function render(data, encodings) {
+                const container = d3.select("#content");
+                const tt = d3.select("#tt");
+                container.selectAll("svg").remove();
+
+                if (!encodings.angle || !encodings.color || data.length === 0) return;
+
+                const processed = data.map(d => ({
+                    val: parseFloat(d[encodings.angle.name].nativeValue) || 0,
+                    lab: d[encodings.color.name].formattedValue
+                }));
+
+                const finalData = Array.from(d3.rollup(processed, v => d3.sum(v, d => d.val), d => d.lab), ([lab, val]) => ({ lab, val }));
+                const total = d3.sum(finalData, d => d.val);
 
                 const w = window.innerWidth, h = window.innerHeight;
-                const r = Math.min(w, h) / 2.8;
-                const svg = svgContainer.append("svg").attr("width", w).attr("height", h).append("g").attr("transform", `translate(${w/2},${h/2})`);
+                const radius = Math.min(w, h) / 2.8;
 
-                const colors = d3.scaleOrdinal().range(["#00f2ff", "#ff007c", "#7000ff", "#00ff95", "#ffcf00"]);
+                const svg = container.append("svg").attr("width", w).attr("height", h)
+                    .append("g").attr("transform", `translate(${w/2},${h/2})`);
+
+                // CUSTOM NEON COLORS (Not available in Tableau)
+                const myCustomNeonColors = ["#00f2ff", "#ff007c", "#7000ff", "#00ff95", "#ffcf00", "#ff4500"];
+                const colorScale = d3.scaleOrdinal().range(myCustomNeonColors);
+
                 const pie = d3.pie().value(d => d.val).padAngle(0.05);
-                const arc = d3.arc().innerRadius(r * 0.72).outerRadius(r).cornerRadius(12);
+                const arc = d3.arc().innerRadius(radius * 0.72).outerRadius(radius).cornerRadius(12);
 
-                svg.selectAll("path").data(pie(data)).enter().append("path")
-                    .attr("class", "arc").attr("d", arc)
-                    .attr("fill", d => colors(d.data.lab))
+                svg.selectAll("path").data(pie(finalData)).enter().append("path")
+                    .attr("class", "arc")
+                    .attr("d", arc)
+                    .attr("fill", d => encodings.colors[d.data.lab] || colorScale(d.data.lab))
                     .style("stroke", "#0b0e14").style("stroke-width", "4px")
                     .on("mouseover", (e, d) => {
+                        tt.style("opacity", 1).html(`<b>${d.data.lab}</b><br>${d.data.val.toLocaleString()}`);
                         svg.select(".center-val").text(d.data.val.toLocaleString());
                         svg.select(".center-lab").text(d.data.lab);
                     })
+                    .on("mousemove", (e) => tt.style("left", (e.pageX+15)+"px").style("top", (e.pageY-15)+"px"))
                     .on("mouseout", () => {
+                        tt.style("opacity", 0);
                         svg.select(".center-val").text(total.toLocaleString());
                         svg.select(".center-lab").text("TOTAL");
                     });
 
-                svg.append("text").attr("class", "center-val").attr("dy", "0.1em").style("font-size", (r*0.2)+"px").text(total.toLocaleString());
+                svg.append("text").attr("class", "center-val").attr("dy", "0.1em")
+                    .style("font-size", (radius * 0.18) + "px").text(total.toLocaleString());
+                
                 svg.append("text").attr("class", "center-lab").attr("dy", "2.2em").text("TOTAL");
             }
         })();
