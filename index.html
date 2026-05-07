@@ -1,98 +1,80 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Modern Gradient Donut</title>
+    <title>Gradient Donut</title>
     <script src="https://cdn.jsdelivr.net/gh/tableau/extensions-api-js@main/lib/tableau.extensions.1.latest.js"></script>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
+        body { font-family: 'Inter', 'Segoe UI', sans-serif; margin: 0; background: transparent; overflow: hidden; }
         #chart { width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
-        .center-val { font-family: 'Segoe UI', sans-serif; font-weight: 800; fill: #333; }
-        .center-lab { font-family: 'Segoe UI', sans-serif; font-size: 14px; fill: #888; text-transform: uppercase; }
-        path { cursor: pointer; transition: opacity 0.3s; }
-        path:hover { opacity: 0.8; }
+        .center-text { text-anchor: middle; font-weight: 700; fill: #222; }
+        .center-sub { text-anchor: middle; font-size: 12px; fill: #888; text-transform: uppercase; }
+        path { transition: filter 0.3s ease; cursor: pointer; }
+        path:hover { filter: brightness(1.15) drop-shadow(0 0 5px rgba(0,0,0,0.1)); }
     </style>
 </head>
 <body>
     <div id="chart"></div>
-
     <script>
         tableau.extensions.initializeAsync().then(() => {
-            render();
-            // Auto-refresh when data or filters change
-            const worksheet = tableau.extensions.dashboardContent.dashboard.worksheets[0];
-            worksheet.addEventListener(tableau.TableauEventType.FilterChanged, render);
-            worksheet.addEventListener(tableau.TableauEventType.MarkSelectionChanged, render);
+            const draw = async () => {
+                const worksheet = tableau.extensions.dashboardContent.dashboard.worksheets[0];
+                const dataTable = await worksheet.getSummaryDataAsync();
+                
+                // DATA MAPPING
+                // Row[0] = Dimension (Label), Row[1] = Measure (Value)
+                const data = dataTable.data.map(d => ({
+                    label: d[0].formattedValue,
+                    value: d[1].value
+                }));
+
+                const width = window.innerWidth;
+                const height = window.innerHeight;
+                const radius = Math.min(width, height) / 2 - 50;
+
+                d3.select("#chart").selectAll("*").remove();
+                const svg = d3.select("#chart").append("svg")
+                    .attr("width", width).attr("height", height)
+                    .append("g").attr("transform", `translate(${width/2},${height/2})`);
+
+                // MODERN GRADIENT COLOR PALETTE
+                const colors = ["#4E79A7", "#F28E2B", "#E15759", "#76B7B2", "#59A14F", "#EDC948"];
+
+                // CREATE RADIAL GRADIENTS
+                const defs = svg.append("defs");
+                data.forEach((d, i) => {
+                    const grad = defs.append("radialGradient")
+                        .attr("id", `grad-${i}`)
+                        .attr("cx", "0").attr("cy", "0").attr("r", "100%")
+                        .attr("gradientUnits", "userSpaceOnUse");
+
+                    grad.append("stop").attr("offset", "40%").attr("stop-color", "#fff").attr("stop-opacity", 0.6);
+                    grad.append("stop").attr("offset", "100%").attr("stop-color", colors[i % colors.length]);
+                });
+
+                // DRAW PIE
+                const pie = d3.pie().value(v => v.value).padAngle(0.03);
+                const arc = d3.arc().innerRadius(radius * 0.72).outerRadius(radius).cornerRadius(10);
+
+                svg.selectAll("path").data(pie(data)).enter().append("path")
+                    .attr("d", arc)
+                    .attr("fill", (d, i) => `url(#grad-${i})`);
+
+                // CENTER LABELS
+                const total = d3.sum(data, d => d.value);
+                svg.append("text").attr("class", "center-text").attr("dy", "0.1em")
+                    .style("font-size", (radius * 0.22) + "px").text(total.toLocaleString());
+                
+                svg.append("text").attr("class", "center-sub").attr("dy", "2.1em").text("Grand Total");
+            };
+
+            draw();
+            // Refresh on resize or filter change
+            window.addEventListener('resize', draw);
+            const ws = tableau.extensions.dashboardContent.dashboard.worksheets[0];
+            ws.addEventListener(tableau.TableauEventType.FilterChanged, draw);
         });
-
-        async function render() {
-            const worksheet = tableau.extensions.dashboardContent.dashboard.worksheets[0];
-            const dataTable = await worksheet.getSummaryDataAsync();
-            
-            // Process Tableau Data
-            // We assume: Column 0 = Label, Column 1 = Value
-            const data = dataTable.data.map(d => ({
-                label: d[0].formattedValue,
-                value: d[1].value
-            }));
-
-            const container = document.getElementById('chart');
-            const width = container.offsetWidth;
-            const height = container.offsetHeight;
-            const radius = Math.min(width, height) / 2 - 40;
-
-            d3.select("#chart").selectAll("*").remove();
-            
-            const svg = d3.select("#chart")
-                .append("svg")
-                .attr("width", width)
-                .attr("height", height)
-                .append("g")
-                .attr("transform", `translate(${width / 2}, ${height / 2})`);
-
-            // Define Modern Color Palette
-            const colors = ["#00d2ff", "#3a7bd5", "#6a11cb", "#2575fc", "#ff0844", "#ffb199"];
-
-            // 1. Create Radial Gradients (Middle to Outer)
-            const defs = svg.append("defs");
-            data.forEach((d, i) => {
-                const grad = defs.append("radialGradient")
-                    .attr("id", `radial-grad-${i}`)
-                    .attr("cx", "0").attr("cy", "0").attr("r", "100%")
-                    .attr("gradientUnits", "userSpaceOnUse");
-
-                grad.append("stop").attr("offset", "30%").attr("stop-color", "#fff").attr("stop-opacity", 0.5);
-                grad.append("stop").attr("offset", "100%").attr("stop-color", colors[i % colors.length]);
-            });
-
-            // 2. Build Chart
-            const pie = d3.pie().value(d => d.value).padAngle(0.04);
-            const arc = d3.arc().innerRadius(radius * 0.7).outerRadius(radius).cornerRadius(12);
-
-            svg.selectAll("path")
-                .data(pie(data))
-                .enter()
-                .append("path")
-                .attr("d", arc)
-                .attr("fill", (d, i) => `url(#radial-grad-${i})`);
-
-            // 3. Center Text
-            const total = d3.sum(data, d => d.value);
-            svg.append("text")
-                .attr("class", "center-val")
-                .attr("text-anchor", "middle")
-                .attr("dy", "0.1em")
-                .style("font-size", radius * 0.2 + "px")
-                .text(total.toLocaleString());
-
-            svg.append("text")
-                .attr("class", "center-lab")
-                .attr("text-anchor", "middle")
-                .attr("dy", "1.8em")
-                .text("Total");
-        }
     </script>
 </body>
 </html>
