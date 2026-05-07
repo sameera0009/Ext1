@@ -1,24 +1,178 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Futuristic Donut</title>
-    <!-- Use the CDN version of the Tableau library for GitHub Pages -->
+    <meta charset="UTF-8">
+    <title>Futuristic Neon Donut</title>
+    <!-- External Libraries -->
     <script src="https://cdn.jsdelivr.net/gh/tableau/extensions-api/lib/tableau.extensions.1.latest.js"></script>
     <script src="https://d3js.org/d3.v7.min.js"></script>
+    
+    <!-- Futuristic Typography -->
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+
     <style>
-        /* Your CSS here */
+        :root {
+            --bg-color: #0b0e14;
+            --neon-cyan: #00f2ff;
+            --neon-magenta: #ff007c;
+            --neon-purple: #7000ff;
+            --text-color: #ffffff;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Orbitron', sans-serif;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #viz {
+            width: 100vw;
+            height: 100vh;
+        }
+
+        /* Modern hover transition */
+        .arc {
+            cursor: pointer;
+            transition: filter 0.3s ease, transform 0.3s ease;
+        }
+
+        .arc:hover {
+            filter: brightness(1.4) drop-shadow(0 0 8px var(--neon-cyan));
+        }
+
+        .center-label {
+            fill: var(--text-color);
+            font-weight: bold;
+            text-shadow: 0 0 10px var(--neon-cyan);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .no-data {
+            fill: #444;
+            font-size: 14px;
+            text-anchor: middle;
+        }
     </style>
 </head>
 <body>
+
     <div id="viz"></div>
 
     <script>
-        // YOUR ENTIRE donut.js CODE GOES HERE
         'use strict';
+
         (function () {
+            let worksheet;
+
+            // 1. Initialize the Extension
             window.onload = tableau.extensions.initializeAsync().then(() => {
-                // ... rest of your code ...
+                worksheet = tableau.extensions.worksheetContent.worksheet;
+
+                // Initial Draw
+                fetchDataAndRender();
+
+                // 2. Listen for Data Changes (when user drops fields or filters)
+                worksheet.addEventListener(tableau.TableauEventType.SummaryDataChanged, fetchDataAndRender);
+            }, (err) => {
+                console.error("Error initializing Extension:", err.toString());
             });
+
+            async function fetchDataAndRender() {
+                try {
+                    // 3. Get Visual Spec to see which fields are in which 'encoding' id
+                    const visualSpec = await worksheet.getVisualSpecificationAsync();
+                    
+                    // Find our IDs from the .trex file
+                    const marksCard = visualSpec.marksSpecifications[visualSpec.activeMarksSpecificationIndex];
+                    const angleEncoding = marksCard.encodings.find(e => e.id === 'angle');
+                    const colorEncoding = marksCard.encodings.find(e => e.id === 'color');
+
+                    // 4. Get the actual data
+                    const dataReader = await worksheet.getSummaryDataReaderAsync();
+                    const page = await dataReader.getAllPagesAsync();
+                    
+                    // Map data to a simple array
+                    const chartData = page.data.map(row => {
+                        return {
+                            // We assume row[0] is Angle and row[1] is Color based on typical drop order
+                            // In a robust app, you'd map these via visualSpec indices
+                            value: row[0].nativeValue || 0,
+                            label: row[1].formattedValue || "Unknown"
+                        };
+                    });
+
+                    drawDonut(chartData);
+
+                    await dataReader.releaseAsync();
+                } catch (error) {
+                    console.error("Data fetch error:", error);
+                }
+            }
+
+            function drawDonut(data) {
+                const container = d3.select("#viz");
+                container.selectAll("*").remove();
+
+                const width = window.innerWidth;
+                const height = window.innerHeight;
+                const radius = Math.min(width, height) / 2.5;
+
+                const svg = container.append("svg")
+                    .attr("width", width)
+                    .attr("height", height)
+                    .append("g")
+                    .attr("transform", `translate(${width / 2}, ${height / 2})`);
+
+                if (data.length === 0) {
+                    svg.append("text").attr("class", "no-data").text("Drop fields into Arc Size and Categories");
+                    return;
+                }
+
+                // Futuristic Palette
+                const colorScale = d3.scaleOrdinal()
+                    .range(["#00f2ff", "#7000ff", "#ff007c", "#00ff95", "#ffcf00", "#0078ff"]);
+
+                const pie = d3.pie()
+                    .value(d => d.value)
+                    .padAngle(0.04); // Space between slices
+
+                const arc = d3.arc()
+                    .innerRadius(radius * 0.65) // Donut hole size
+                    .outerRadius(radius)
+                    .cornerRadius(8); // Rounded corners for modern feel
+
+                // Create slices
+                const path = svg.selectAll(".arc")
+                    .data(pie(data))
+                    .enter()
+                    .append("path")
+                    .attr("class", "arc")
+                    .attr("d", arc)
+                    .attr("fill", d => colorScale(d.data.label))
+                    .style("stroke", "#0b0e14")
+                    .style("stroke-width", "3px");
+
+                // Add center text
+                svg.append("text")
+                    .attr("class", "center-label")
+                    .attr("text-anchor", "middle")
+                    .attr("dy", "0.3em")
+                    .style("font-size", radius * 0.12 + "px")
+                    .text("ANALYSIS");
+            }
+
+            // Redraw on window resize
+            window.onresize = () => { if(worksheet) fetchDataAndRender(); };
+
         })();
     </script>
 </body>
