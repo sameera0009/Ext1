@@ -2,131 +2,131 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Neon Donut by Sameera</title>
+    <title>Modern KPI Card</title>
     <script src="https://cdn.jsdelivr.net/gh/tableau/extensions-api/lib/tableau.extensions.1.latest.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;500;700&display=swap" rel="stylesheet">
     <style>
-        :root { --bg: #0b0e14; --neon: #00f2ff; }
-        body, html { 
+        :root {
+            --success: #10b981;
+            --danger: #ef4444;
+            --text-main: #1f2937;
+            --text-sub: #6b7280;
+            --bg-card: #ffffff;
+        }
+
+        body, html {
             margin: 0; padding: 0; width: 100%; height: 100%;
-            background: var(--bg); color: white; font-family: 'Orbitron', sans-serif; 
-            overflow: hidden; display: flex; justify-content: center; align-items: center;
+            background: #f3f4f6; font-family: 'Inter', sans-serif;
+            display: flex; justify-content: center; align-items: center;
         }
-        #content { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
-        .arc { cursor: pointer; transition: filter 0.2s; stroke-linejoin: round; }
-        .arc:hover { filter: brightness(1.4) drop-shadow(0 0 10px var(--neon)); }
-        .center-val { fill: white; font-weight: bold; text-anchor: middle; text-shadow: 0 0 12px var(--neon); }
-        .center-lab { fill: #888; font-size: 11px; text-anchor: middle; text-transform: uppercase; letter-spacing: 2px; }
-        .tt {
-            position: fixed; pointer-events: none; opacity: 0;
-            background: rgba(0,0,0,0.85); border: 1px solid var(--neon);
-            padding: 10px; border-radius: 4px; font-size: 11px; z-index: 10;
-            box-shadow: 0 0 15px rgba(0,242,255,0.2);
+
+        #card {
+            width: 90%; max-width: 400px;
+            background: var(--bg-card);
+            border-radius: 20px;
+            padding: 24px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+            transition: all 0.3s ease;
+            border: 1px solid rgba(255,255,255,0.8);
         }
+
+        .header { font-size: 0.9rem; color: var(--text-sub); font-weight: 500; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+        
+        .main-value { font-size: 2.5rem; font-weight: 700; color: var(--text-main); margin-bottom: 4px; }
+
+        .comparison { font-size: 0.95rem; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
+
+        .progress-container {
+            width: 100%; height: 8px; background: #e5e7eb;
+            border-radius: 10px; overflow: hidden; position: relative;
+        }
+
+        .progress-bar { height: 100%; border-radius: 10px; transition: width 1s cubic-bezier(0.4, 0, 0.2, 1); }
+
+        .status-badge {
+            padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 700;
+            display: inline-block; margin-top: 15px;
+        }
+
+        /* Dynamic Classes */
+        .is-success { color: var(--success); }
+        .bg-success { background: var(--success); }
+        .badge-success { background: #d1fae5; color: var(--success); }
+
+        .is-danger { color: var(--danger); }
+        .bg-danger { background: var(--danger); }
+        .badge-danger { background: #fee2e2; color: var(--danger); }
     </style>
 </head>
 <body>
-    <div id="content"></div>
-    <div class="tt" id="tt"></div>
+
+    <div id="card">
+        <div class="header" id="ui-header">Loading...</div>
+        <div class="main-value" id="ui-actual">--</div>
+        <div class="comparison" id="ui-comparison">
+            <span>vs Budget: <b id="ui-budget">--</b></span>
+        </div>
+        <div class="progress-container">
+            <div class="progress-bar" id="ui-progress"></div>
+        </div>
+        <div id="ui-badge" class="status-badge">PENDING</div>
+    </div>
 
     <script>
         'use strict';
-        (function () {
-            let worksheet;
 
-            window.onload = tableau.extensions.initializeAsync().then(() => {
-                worksheet = tableau.extensions.worksheetContent.worksheet;
+        (function () {
+            tableau.extensions.initializeAsync().then(() => {
                 const update = async () => {
-                    const [data, encodings] = await Promise.all([
-                        getSummaryDataTable(worksheet),
-                        getEncodingMap(worksheet)
-                    ]);
-                    render(data, encodings);
+                    const worksheet = tableau.extensions.worksheetContent.worksheet;
+                    const spec = await worksheet.getVisualSpecificationAsync();
+                    
+                    // Map encodings
+                    const map = {};
+                    if (spec.activeMarksSpecificationIndex >= 0) {
+                        spec.marksSpecifications[spec.activeMarksSpecificationIndex].encodings.forEach(e => {
+                            map[e.id] = e.field.name;
+                        });
+                    }
+
+                    const reader = await worksheet.getSummaryDataReaderAsync();
+                    const page = await reader.getPageAsync(0);
+                    const data = page.data[0]; // Take first row
+                    const columns = page.columns;
+
+                    const getVal = (id) => {
+                        const idx = columns.findIndex(c => c.fieldName === map[id]);
+                        return idx !== -1 ? data[idx] : null;
+                    };
+
+                    const actual = getVal('actual')?.nativeValue || 0;
+                    const budget = getVal('budget')?.nativeValue || 0;
+                    const header = getVal('header')?.formattedValue || "Performance";
+
+                    render(actual, budget, header);
+                    await reader.releaseAsync();
                 };
+
                 worksheet.addEventListener(tableau.TableauEventType.SummaryDataChanged, update);
-                onresize = update;
                 update();
             });
 
-            async function getSummaryDataTable(ws) {
-                let rows = [];
-                const reader = await ws.getSummaryDataReaderAsync(undefined, { ignoreSelection: true });
-                for (let i = 0; i < reader.pageCount; i++) {
-                    const page = await reader.getPageAsync(i);
-                    rows = rows.concat(page.data.map(r => {
-                        const row = {};
-                        page.columns.forEach((col, idx) => { row[col.fieldName] = r[idx]; });
-                        return row;
-                    }));
-                }
-                await reader.releaseAsync();
-                return rows;
-            }
+            function render(act, bud, head) {
+                const percent = (act / bud) * 100;
+                const isAchieved = act >= bud;
+                const colorClass = isAchieved ? 'success' : 'danger';
 
-            async function getEncodingMap(ws) {
-                const spec = await ws.getVisualSpecificationAsync();
-                const map = { colors: {} };
-                if (spec.activeMarksSpecificationIndex < 0) return map;
-                const marks = spec.marksSpecifications[spec.activeMarksSpecificationIndex];
-                marks.encodings.forEach(e => { map[e.id] = e.field; });
-                if (marks.colorPalette) {
-                    marks.colorPalette.paletteEntries.forEach(entry => {
-                        map.colors[entry.value] = entry.color;
-                    });
-                }
-                return map;
-            }
-
-            function render(data, encodings) {
-                const container = d3.select("#content");
-                const tt = d3.select("#tt");
-                container.selectAll("svg").remove();
-
-                if (!encodings.angle || !encodings.color || data.length === 0) return;
-
-                const processed = data.map(d => ({
-                    val: parseFloat(d[encodings.angle.name].nativeValue) || 0,
-                    lab: d[encodings.color.name].formattedValue
-                }));
-
-                const finalData = Array.from(d3.rollup(processed, v => d3.sum(v, d => d.val), d => d.lab), ([lab, val]) => ({ lab, val }));
-                const total = d3.sum(finalData, d => d.val);
-
-                const w = window.innerWidth, h = window.innerHeight;
-                const radius = Math.min(w, h) / 2.8;
-
-                const svg = container.append("svg").attr("width", w).attr("height", h)
-                    .append("g").attr("transform", `translate(${w/2},${h/2})`);
-
-                // CUSTOM NEON COLORS (Not available in Tableau)
-                const myCustomNeonColors = ["#00f2ff", "#ff007c", "#7000ff", "#00ff95", "#ffcf00", "#ff4500"];
-                const colorScale = d3.scaleOrdinal().range(myCustomNeonColors);
-
-                const pie = d3.pie().value(d => d.val).padAngle(0.05);
-                const arc = d3.arc().innerRadius(radius * 0.72).outerRadius(radius).cornerRadius(12);
-
-                svg.selectAll("path").data(pie(finalData)).enter().append("path")
-                    .attr("class", "arc")
-                    .attr("d", arc)
-                    .attr("fill", d => encodings.colors[d.data.lab] || colorScale(d.data.lab))
-                    .style("stroke", "#0b0e14").style("stroke-width", "4px")
-                    .on("mouseover", (e, d) => {
-                        tt.style("opacity", 1).html(`<b>${d.data.lab}</b><br>${d.data.val.toLocaleString()}`);
-                        svg.select(".center-val").text(d.data.val.toLocaleString());
-                        svg.select(".center-lab").text(d.data.lab);
-                    })
-                    .on("mousemove", (e) => tt.style("left", (e.pageX+15)+"px").style("top", (e.pageY-15)+"px"))
-                    .on("mouseout", () => {
-                        tt.style("opacity", 0);
-                        svg.select(".center-val").text(total.toLocaleString());
-                        svg.select(".center-lab").text("TOTAL");
-                    });
-
-                svg.append("text").attr("class", "center-val").attr("dy", "0.1em")
-                    .style("font-size", (radius * 0.18) + "px").text(total.toLocaleString());
+                document.getElementById('ui-header').innerText = head;
+                document.getElementById('ui-actual').innerText = act.toLocaleString(undefined, {style: 'currency', currency: 'USD', maximumFractionDigits: 0});
+                document.getElementById('ui-budget').innerText = bud.toLocaleString(undefined, {style: 'currency', currency: 'USD', maximumFractionDigits: 0});
                 
-                svg.append("text").attr("class", "center-lab").attr("dy", "2.2em").text("TOTAL");
+                const bar = document.getElementById('ui-progress');
+                bar.style.width = Math.min(percent, 100) + '%';
+                bar.className = `progress-bar bg-${colorClass}`;
+
+                const badge = document.getElementById('ui-badge');
+                badge.innerText = isAchieved ? 'TARGET ACHIEVED' : 'BELOW BUDGET';
+                badge.className = `status-badge badge-${colorClass}`;
             }
         })();
     </script>
