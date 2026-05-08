@@ -1,134 +1,451 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Neon Donut by Sameera</title>
-    <script src="https://cdn.jsdelivr.net/gh/tableau/extensions-api/lib/tableau.extensions.1.latest.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
-    <style>
-        :root { --bg: #0b0e14; --neon: #00f2ff; }
-        body, html {
-            margin: 0; padding: 0; width: 100%; height: 100%;
-            background: var(--bg); color: white; font-family: 'Orbitron', sans-serif;
-            overflow: hidden; display: flex; justify-content: center; align-items: center;
-        }
-        #content { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
-        .arc { cursor: pointer; transition: filter 0.2s; stroke-linejoin: round; }
-        .arc:hover { filter: brightness(1.4) drop-shadow(0 0 10px var(--neon)); }
-        .center-val { fill: white; font-weight: bold; text-anchor: middle; text-shadow: 0 0 12px var(--neon); }
-        .center-lab { fill: #888; font-size: 11px; text-anchor: middle; text-transform: uppercase; letter-spacing: 2px; }
-        .tt {
-            position: fixed; pointer-events: none; opacity: 0;
-            background: rgba(0,0,0,0.85); border: 1px solid var(--neon);
-            padding: 10px; border-radius: 4px; font-size: 11px; z-index: 10;
-            box-shadow: 0 0 15px rgba(0,242,255,0.2);
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <title>KPI Card by Sameera</title>
+  <script src="https://cdn.jsdelivr.net/gh/tableau/extensions-api/lib/tableau.extensions.1.latest.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --accent-a: #6C63FF;
+      --accent-b: #3ECFCF;
+      --card-bg: #ffffff;
+      --card-radius: 20px;
+      --bar-h: 5px;
+    }
+
+    html, body {
+      width: 100%; height: 100%;
+      background: #f0f2f6;
+      font-family: 'DM Sans', system-ui, sans-serif;
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden;
+    }
+
+    #root {
+      width: 100%; height: 100%;
+      display: flex; align-items: center; justify-content: center;
+      padding: 20px;
+    }
+
+    .kpi-card {
+      background: var(--card-bg);
+      border-radius: var(--card-radius);
+      width: min(340px, 100%);
+      overflow: hidden;
+      box-shadow: 0 4px 32px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.06);
+      transition: box-shadow .25s;
+      position: relative;
+    }
+
+    .top-bar {
+      height: var(--bar-h);
+      background: linear-gradient(90deg, var(--accent-a), var(--accent-b));
+      transition: background 0.4s;
+    }
+
+    .card-body { padding: 20px 22px 16px; }
+
+    .row-top {
+      display: flex; align-items: flex-start;
+      justify-content: space-between; gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .kpi-label {
+      font-size: 11px; font-weight: 600;
+      letter-spacing: 1.3px; text-transform: uppercase;
+      color: #9898ac; line-height: 1.4;
+    }
+
+    .variance-badge {
+      display: inline-flex; align-items: center; gap: 3px;
+      font-size: 12px; font-weight: 700;
+      padding: 3px 9px 3px 6px;
+      border-radius: 30px; white-space: nowrap;
+      transition: background 0.3s, color 0.3s;
+    }
+    .variance-badge.up   { background: #e6faf2; color: #17a367; }
+    .variance-badge.down { background: #fff0f0; color: #e03b3b; }
+    .variance-badge svg  { width: 12px; height: 12px; flex-shrink: 0; }
+
+    .hero-amount {
+      font-size: clamp(28px, 6vw, 40px);
+      font-weight: 700; color: #1a1a2e;
+      letter-spacing: -1.5px; line-height: 1.1;
+      margin: 8px 0 4px;
+      font-feature-settings: "tnum";
+    }
+
+    .mom-row {
+      display: flex; align-items: center; gap: 8px;
+      margin-bottom: 16px;
+    }
+    .mom-val {
+      font-size: 13px; font-weight: 600;
+      color: var(--accent-a);
+      transition: color 0.4s;
+      font-family: 'DM Mono', monospace;
+    }
+    .mom-label { font-size: 12px; color: #b0b0c0; }
+
+    .sparkline-wrap {
+      position: relative; height: 68px; width: 100%;
+    }
+    svg.spark { width: 100%; height: 68px; overflow: visible; }
+
+    .period-dots {
+      display: flex; justify-content: space-between;
+      padding: 4px 2px 0;
+    }
+    .period-dots span {
+      font-size: 9px; color: #c0c0d0;
+      letter-spacing: 0.5px; font-weight: 500;
+    }
+
+    .divider {
+      height: 1px; background: #f2f2f8;
+      margin: 0 0 0;
+    }
+
+    .color-panel {
+      padding: 14px 22px 16px;
+    }
+    .panel-label {
+      font-size: 10px; font-weight: 600;
+      letter-spacing: 1.2px; text-transform: uppercase;
+      color: #b0b0c0; margin-bottom: 10px;
+    }
+    .swatches { display: flex; gap: 8px; flex-wrap: wrap; }
+    .swatch {
+      width: 24px; height: 24px; border-radius: 50%;
+      cursor: pointer; border: 2.5px solid transparent;
+      transition: transform .15s, box-shadow .15s;
+      position: relative;
+    }
+    .swatch:hover { transform: scale(1.15); }
+    .swatch.active {
+      box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--sw-color);
+      transform: scale(1.1);
+    }
+
+    .tooltip {
+      position: fixed; pointer-events: none;
+      background: rgba(20,20,35,0.92); color: #fff;
+      font-size: 11px; font-weight: 500;
+      padding: 6px 10px; border-radius: 6px;
+      opacity: 0; transition: opacity .15s;
+      white-space: nowrap; z-index: 100;
+      font-family: 'DM Mono', monospace;
+    }
+
+    #error-msg {
+      color: #999; font-size: 13px;
+      text-align: center; padding: 40px 20px;
+      display: none;
+    }
+  </style>
 </head>
 <body>
-    <div id="content"></div>
-    <div class="tt" id="tt"></div>
+<div id="root">
+  <div class="kpi-card" id="kpiCard">
+    <div class="top-bar" id="topBar"></div>
+    <div class="card-body">
+      <div class="row-top">
+        <span class="kpi-label" id="kpiLabel">Metric</span>
+        <span class="variance-badge up" id="varianceBadge">
+          <svg id="varIcon" viewBox="0 0 12 12" fill="none">
+            <path d="M6 9V3M6 3L3 6M6 3l3 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span id="varText">—</span>
+        </span>
+      </div>
+      <div class="hero-amount" id="heroAmount">—</div>
+      <div class="mom-row">
+        <span class="mom-val" id="momVal">—</span>
+        <span class="mom-label">vs prev period</span>
+      </div>
+      <div class="sparkline-wrap">
+        <svg class="spark" id="sparkSvg" aria-hidden="true"></svg>
+      </div>
+      <div class="period-dots" id="periodDots"></div>
+    </div>
+    <div class="divider"></div>
+    <div class="color-panel">
+      <div class="panel-label">Accent Color</div>
+      <div class="swatches" id="swatches"></div>
+    </div>
+  </div>
+  <div class="tooltip" id="tooltip"></div>
+  <div id="error-msg">Drop a <b>measure</b> onto <em>Value</em> and a <b>dimension</b> onto <em>Period</em>.</div>
+</div>
 
-    <script>
-        'use strict';
-        (function () {
-            let worksheet;
+<script>
+'use strict';
+(function () {
 
-            window.onload = tableau.extensions.initializeAsync().then(() => {
-                worksheet = tableau.extensions.worksheetContent.worksheet;
-                const update = async () => {
-                    const [data, encodings] = await Promise.all([
-                        getSummaryDataTable(worksheet),
-                        getEncodingMap(worksheet)
-                    ]);
-                    render(data, encodings);
-                };
-                worksheet.addEventListener(tableau.TableauEventType.SummaryDataChanged, update);
-                onresize = update;
-                update();
-            });
+  /* ── Accent palette ── */
+  const PALETTES = [
+    { a: '#6C63FF', b: '#3ECFCF', name: 'Violet Teal'   },
+    { a: '#FF6B6B', b: '#FF9A3C', name: 'Coral Amber'   },
+    { a: '#00C9A7', b: '#36D1C4', name: 'Emerald'       },
+    { a: '#4776E6', b: '#8E54E9', name: 'Ocean Indigo'  },
+    { a: '#F7971E', b: '#FFD200', name: 'Sunrise'       },
+    { a: '#FC5C7D', b: '#6A82FB', name: 'Rose Blue'     },
+    { a: '#1de9b6', b: '#1565C0', name: 'Teal Navy'     },
+    { a: '#f953c6', b: '#b91d73', name: 'Magenta'       },
+  ];
 
-            async function getSummaryDataTable(ws) {
-                let rows = [];
-                const reader = await ws.getSummaryDataReaderAsync(undefined, { ignoreSelection: true });
-                for (let i = 0; i < reader.pageCount; i++) {
-                    const page = await reader.getPageAsync(i);
-                    rows = rows.concat(page.data.map(r => {
-                        const row = {};
-                        page.columns.forEach((col, idx) => { row[col.fieldName] = r[idx]; });
-                        return row;
-                    }));
-                }
-                await reader.releaseAsync();
-                return rows;
-            }
+  let currentPalette = 0;
+  let sparkData = [];
 
-            async function getEncodingMap(ws) {
-                const spec = await ws.getVisualSpecificationAsync();
-                const map = { colors: {} };
-                if (spec.activeMarksSpecificationIndex < 0) return map;
-                const marks = spec.marksSpecifications[spec.activeMarksSpecificationIndex];
-                marks.encodings.forEach(e => { map[e.id] = e.field; });
-                if (marks.colorPalette) {
-                    marks.colorPalette.paletteEntries.forEach(entry => {
-                        map.colors[entry.value] = entry.color;
-                    });
-                }
-                return map;
-            }
+  /* ── Build swatch bar ── */
+  const swatchesEl = document.getElementById('swatches');
+  PALETTES.forEach((p, i) => {
+    const s = document.createElement('div');
+    s.className = 'swatch' + (i === 0 ? ' active' : '');
+    s.style.background = `linear-gradient(135deg,${p.a},${p.b})`;
+    s.style.setProperty('--sw-color', p.a);
+    s.title = p.name;
+    s.addEventListener('click', () => applyPalette(i));
+    swatchesEl.appendChild(s);
+  });
 
-            function render(data, encodings) {
-                const container = d3.select("#content");
-                const tt = d3.select("#tt");
-                container.selectAll("svg").remove();
+  function applyPalette(idx) {
+    currentPalette = idx;
+    const p = PALETTES[idx];
+    document.documentElement.style.setProperty('--accent-a', p.a);
+    document.documentElement.style.setProperty('--accent-b', p.b);
+    document.querySelectorAll('.swatch').forEach((s, i) => s.classList.toggle('active', i === idx));
+    if (sparkData.length) drawSpark(sparkData, p.a, p.b);
+  }
 
-                if (!encodings.angle || !encodings.color || data.length === 0) return;
+  /* ── Tableau init ── */
+  window.onload = function () {
+    tableau.extensions.initializeAsync().then(() => {
+      const ws = tableau.extensions.worksheetContent.worksheet;
 
-                const processed = data.map(d => ({
-                    val: parseFloat(d[encodings.angle.name].nativeValue) || 0,
-                    lab: d[encodings.color.name].formattedValue
-                }));
+      const refresh = async () => {
+        try {
+          const [data, enc] = await Promise.all([
+            getSummaryData(ws),
+            getEncodings(ws)
+          ]);
+          updateCard(data, enc);
+        } catch (e) {
+          showError();
+        }
+      };
 
-                const finalData = Array.from(d3.rollup(processed, v => d3.sum(v, d => d.val), d => d.lab), ([lab, val]) => ({ lab, val }));
-                const total = d3.sum(finalData, d => d.val);
+      ws.addEventListener(tableau.TableauEventType.SummaryDataChanged, refresh);
+      window.addEventListener('resize', () => { if (sparkData.length) drawSpark(sparkData, PALETTES[currentPalette].a, PALETTES[currentPalette].b); });
+      refresh();
+    }).catch(showError);
+  };
 
-                const w = window.innerWidth, h = window.innerHeight;
-                const radius = Math.min(w, h) / 2.8;
+  /* ── Data helpers ── */
+  async function getSummaryData(ws) {
+    let rows = [];
+    const reader = await ws.getSummaryDataReaderAsync(undefined, { ignoreSelection: true });
+    for (let i = 0; i < reader.pageCount; i++) {
+      const page = await reader.getPageAsync(i);
+      rows = rows.concat(page.data.map(r => {
+        const row = {};
+        page.columns.forEach((c, idx) => { row[c.fieldName] = r[idx]; });
+        return row;
+      }));
+    }
+    await reader.releaseAsync();
+    return rows;
+  }
 
-                const svg = container.append("svg").attr("width", w).attr("height", h)
-                    .append("g").attr("transform", `translate(${w/2},${h/2})`);
+  async function getEncodings(ws) {
+    const spec = await ws.getVisualSpecificationAsync();
+    const map = {};
+    if (spec.activeMarksSpecificationIndex < 0) return map;
+    const marks = spec.marksSpecifications[spec.activeMarksSpecificationIndex];
+    marks.encodings.forEach(e => { map[e.id] = e.field; });
+    return map;
+  }
 
-                // CUSTOM NEON COLORS (Not available in Tableau)
-                const myCustomNeonColors = ["#00f2ff", "#ff007c", "#7000ff", "#00ff95", "#ffcf00", "#ff4500"];
-                const colorScale = d3.scaleOrdinal().range(myCustomNeonColors);
+  /* ── Card update ── */
+  function updateCard(data, enc) {
+    if (!enc.value || data.length === 0) { showError(); return; }
+    document.getElementById('error-msg').style.display = 'none';
+    document.getElementById('kpiCard').style.display = '';
 
-                const pie = d3.pie().value(d => d.val).padAngle(0.05);
-                const arc = d3.arc().innerRadius(radius * 0.72).outerRadius(radius).cornerRadius(12);
+    const valField = enc.value.name;
+    const periodField = enc.period ? enc.period.name : null;
+    const labelField  = enc.label  ? enc.label.name  : null;
 
-                svg.selectAll("path").data(pie(finalData)).enter().append("path")
-                    .attr("class", "arc")
-                    .attr("d", arc)
-                    .attr("fill", d => encodings.colors[d.data.lab] || colorScale(d.data.lab))
-                    .style("stroke", "#0b0e14").style("stroke-width", "4px")
-                    .on("mouseover", (e, d) => {
-                        tt.style("opacity", 1).html(`<b>${d.data.lab}</b><br>${d.data.val.toLocaleString()}`);
-                        svg.select(".center-val").text(d.data.val.toLocaleString());
-                        svg.select(".center-lab").text(d.data.lab);
-                    })
-                    .on("mousemove", (e) => tt.style("left", (e.pageX+15)+"px").style("top", (e.pageY-15)+"px"))
-                    .on("mouseout", () => {
-                        tt.style("opacity", 0);
-                        svg.select(".center-val").text(total.toLocaleString());
-                        svg.select(".center-lab").text("TOTAL");
-                    });
+    /* label */
+    document.getElementById('kpiLabel').textContent =
+      labelField ? data[0][labelField]?.formattedValue : (valField || 'Metric');
 
-                svg.append("text").attr("class", "center-val").attr("dy", "0.1em")
-                    .style("font-size", (radius * 0.18) + "px").text(total.toLocaleString());
-               
-                svg.append("text").attr("class", "center-lab").attr("dy", "2.2em").text("TOTAL");
-            }
-        })();
-    </script>
+    /* numeric series */
+    let series = data.map(r => ({
+      val: parseFloat(r[valField]?.nativeValue) || 0,
+      period: periodField ? (r[periodField]?.formattedValue || '') : ''
+    }));
+
+    /* sort by period if present */
+    if (periodField) series.sort((a, b) => a.period.localeCompare(b.period, undefined, { numeric: true }));
+
+    const vals   = series.map(s => s.val);
+    const labels = series.map(s => s.period);
+    const latest = vals[vals.length - 1] || 0;
+    const prev   = vals.length > 1 ? vals[vals.length - 2] : 0;
+
+    document.getElementById('heroAmount').textContent = fmt(latest);
+
+    /* MoM / period-over-period */
+    const diff = latest - prev;
+    const pct  = prev !== 0 ? (diff / Math.abs(prev)) * 100 : 0;
+    const up   = diff >= 0;
+
+    const badge = document.getElementById('varianceBadge');
+    badge.className = 'variance-badge ' + (up ? 'up' : 'down');
+    document.getElementById('varText').textContent = (up ? '+' : '') + pct.toFixed(1) + '%';
+    const icon = document.getElementById('varIcon');
+    icon.innerHTML = up
+      ? `<path d="M6 9V3M6 3L3 6M6 3l3 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`
+      : `<path d="M6 3v6M6 9L3 6m3 3l3-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`;
+
+    document.getElementById('momVal').textContent =
+      (up ? '▲ ' : '▼ ') + fmtDiff(Math.abs(diff));
+
+    /* period labels under chart */
+    const dots = document.getElementById('periodDots');
+    dots.innerHTML = '';
+    if (labels.length) {
+      [labels[0], labels[Math.floor(labels.length / 2)], labels[labels.length - 1]]
+        .filter(Boolean)
+        .forEach(l => {
+          const sp = document.createElement('span');
+          sp.textContent = l;
+          dots.appendChild(sp);
+        });
+    }
+
+    /* spark */
+    sparkData = vals.map((v, i) => ({ v, label: labels[i] || String(i + 1) }));
+    drawSpark(sparkData, PALETTES[currentPalette].a, PALETTES[currentPalette].b);
+  }
+
+  /* ── Sparkline (D3) ── */
+  function drawSpark(points, colorA, colorB) {
+    const svgEl = document.getElementById('sparkSvg');
+    d3.select(svgEl).selectAll('*').remove();
+
+    const W = svgEl.clientWidth  || 280;
+    const H = 68;
+    const pad = { t: 6, r: 4, b: 6, l: 4 };
+
+    const vals = points.map(p => p.v);
+    const xScale = d3.scaleLinear().domain([0, vals.length - 1]).range([pad.l, W - pad.r]);
+    const yScale = d3.scaleLinear().domain([d3.min(vals) * 0.97, d3.max(vals) * 1.03]).range([H - pad.b, pad.t]);
+
+    const svg = d3.select(svgEl);
+
+    /* gradient */
+    const gradId = 'kpiGrad_' + Date.now();
+    const defs   = svg.append('defs');
+    const grad   = defs.append('linearGradient').attr('id', gradId).attr('x1','0').attr('y1','0').attr('x2','0').attr('y2','1');
+    grad.append('stop').attr('offset','0%').attr('stop-color', colorA).attr('stop-opacity', 0.35);
+    grad.append('stop').attr('offset','100%').attr('stop-color', colorB).attr('stop-opacity', 0.0);
+
+    /* area */
+    const area = d3.area()
+      .x((_,i) => xScale(i))
+      .y0(H - pad.b)
+      .y1(d => yScale(d))
+      .curve(d3.curveCatmullRom.alpha(0.5));
+
+    svg.append('path')
+      .datum(vals)
+      .attr('d', area)
+      .attr('fill', `url(#${gradId})`);
+
+    /* line */
+    const line = d3.line()
+      .x((_,i) => xScale(i))
+      .y(d => yScale(d))
+      .curve(d3.curveCatmullRom.alpha(0.5));
+
+    svg.append('path')
+      .datum(vals)
+      .attr('d', line)
+      .attr('fill', 'none')
+      .attr('stroke', colorA)
+      .attr('stroke-width', 2.5)
+      .attr('stroke-linecap', 'round');
+
+    /* last dot */
+    const lastX = xScale(vals.length - 1);
+    const lastY = yScale(vals[vals.length - 1]);
+    svg.append('circle').attr('cx', lastX).attr('cy', lastY).attr('r', 4)
+      .attr('fill', colorA).attr('stroke', '#fff').attr('stroke-width', 2);
+
+    /* hover overlay */
+    const tt = document.getElementById('tooltip');
+    const overlay = svg.append('rect')
+      .attr('width', W).attr('height', H)
+      .attr('fill', 'transparent')
+      .style('cursor', 'crosshair');
+
+    const hoverLine = svg.append('line')
+      .attr('y1', pad.t).attr('y2', H - pad.b)
+      .attr('stroke', '#ccc').attr('stroke-width', 1)
+      .attr('stroke-dasharray', '3,2')
+      .style('opacity', 0);
+
+    const hoverDot = svg.append('circle').attr('r', 4)
+      .attr('fill', colorA).attr('stroke','#fff').attr('stroke-width',2)
+      .style('opacity', 0);
+
+    overlay
+      .on('mousemove', function(event) {
+        const [mx] = d3.pointer(event, svgEl);
+        const idx  = Math.round(xScale.invert(mx));
+        const ci   = Math.max(0, Math.min(vals.length - 1, idx));
+        const px   = xScale(ci), py = yScale(vals[ci]);
+        hoverLine.attr('x1', px).attr('x2', px).style('opacity', 1);
+        hoverDot.attr('cx', px).attr('cy', py).style('opacity', 1);
+        tt.style('opacity', 1)
+          .style('left', (event.clientX + 14) + 'px')
+          .style('top',  (event.clientY - 28) + 'px')
+          .innerHTML = `<b>${points[ci].label}</b>&nbsp;&nbsp;${fmt(vals[ci])}`;
+      })
+      .on('mouseleave', () => {
+        hoverLine.style('opacity', 0);
+        hoverDot.style('opacity', 0);
+        tt.style('opacity', 0);
+      });
+  }
+
+  /* ── Formatters ── */
+  function fmt(v) {
+    if (Math.abs(v) >= 1e9) return '$' + (v / 1e9).toFixed(2) + 'B';
+    if (Math.abs(v) >= 1e6) return '$' + (v / 1e6).toFixed(2) + 'M';
+    if (Math.abs(v) >= 1e3) return '$' + (v / 1e3).toFixed(1) + 'K';
+    return v.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  }
+  function fmtDiff(v) {
+    if (Math.abs(v) >= 1e9) return '$' + (v / 1e9).toFixed(2) + 'B';
+    if (Math.abs(v) >= 1e6) return '$' + (v / 1e6).toFixed(2) + 'M';
+    if (Math.abs(v) >= 1e3) return '$' + (v / 1e3).toFixed(1) + 'K';
+    return '$' + v.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  }
+
+  function showError() {
+    document.getElementById('kpiCard').style.display = 'none';
+    document.getElementById('error-msg').style.display = 'block';
+  }
+
+})();
+</script>
 </body>
 </html>
