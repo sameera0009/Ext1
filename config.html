@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>KPI Card — Format</title>
+  <script src="https://cdn.jsdelivr.net/gh/tableau/extensions-api/lib/tableau.extensions.1.latest.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --a: #6C63FF; --a2: #3ECFCF;
+      --surface: #f7f6ff;
+      --border: #eeedf8;
+      --text: #1e1d30;
+      --muted: #9898b0;
+    }
+
+    html, body {
+      width: 100%; height: 100%; overflow: hidden;
+      font-family: 'Syne', sans-serif;
+      background: var(--surface);
+      color: var(--text);
+    }
+
+    /* ── LAYOUT ── */
+    .shell {
+      display: flex; flex-direction: column;
+      height: 100vh;
+    }
+
+    /* ── HEADER ── */
+    .hdr {
+      background: linear-gradient(120deg, var(--a) 0%, var(--a2) 100%);
+      padding: 22px 24px 18px;
+      flex-shrink: 0;
+    }
+    .hdr-eyebrow {
+      font-size: 10px; font-weight: 700; letter-spacing: 2px;
+      text-transform: uppercase; color: rgba(255,255,255,0.65);
+      margin-bottom: 4px;
+    }
+    .hdr-title {
+      font-size: 20px; font-weight: 800; color: #fff;
+      letter-spacing: -0.5px;
+    }
+    .hdr-sub {
+      font-size: 11px; color: rgba(255,255,255,0.6);
+      margin-top: 3px; font-weight: 400;
+    }
+
+    /* ── SCROLL BODY ── */
+    .scroll { flex: 1; overflow-y: auto; padding: 0 0 8px; }
+    .scroll::-webkit-scrollbar { width: 4px; }
+    .scroll::-webkit-scrollbar-thumb { background: #dddcf0; border-radius: 2px; }
+
+    /* ── SECTION ── */
+    .section { padding: 18px 24px 4px; }
+    .sec-label {
+      font-size: 10px; font-weight: 700; letter-spacing: 1.5px;
+      text-transform: uppercase; color: var(--muted); margin-bottom: 10px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .sec-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+    /* ── TITLE INPUT ── */
+    .title-field {
+      position: relative; margin-bottom: 6px;
+    }
+    .title-field input {
+      width: 100%; padding: 11px 14px 11px 40px;
+      border: 2px solid var(--border);
+      border-radius: 12px; background: #fff;
+      font-family: 'Syne', sans-serif;
+      font-size: 14px; font-weight: 600; color: var(--text);
+      outline: none; transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .title-field input:focus {
+      border-color: var(--a);
+      box-shadow: 0 0 0 3px rgba(108,99,255,0.12);
+    }
+    .title-field input::placeholder { color: #c0bfd8; font-weight: 400; }
+    .title-field .icon {
+      position: absolute; left: 13px; top: 50%; transform: translateY(-50%);
+      font-size: 16px; pointer-events: none;
+    }
+    .field-hint { font-size: 11px; color: var(--muted); margin-top: 4px; padding-left: 2px; }
+
+    /* ── PALETTE GRID ── */
+    .pal-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .pal-item {
+      height: 40px; border-radius: 12px; cursor: pointer;
+      position: relative; border: 3px solid transparent;
+      transition: transform .15s, box-shadow .15s;
+    }
+    .pal-item:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.15); }
+    .pal-item.active {
+      border-color: #fff;
+      box-shadow: 0 0 0 3px var(--pw), 0 4px 16px rgba(0,0,0,0.18);
+      transform: translateY(-1px);
+    }
+    .pal-item .check {
+      position: absolute; inset: 0; display: flex;
+      align-items: center; justify-content: center;
+      font-size: 16px; opacity: 0; transition: opacity .15s;
+    }
+    .pal-item.active .check { opacity: 1; }
+
+    /* ── CHART TYPE ── */
+    .chart-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .ct {
+      padding: 12px 6px 10px; border-radius: 12px;
+      border: 2px solid var(--border); background: #fff;
+      cursor: pointer; text-align: center;
+      transition: all .15s; color: var(--muted);
+      font-size: 11px; font-weight: 700;
+    }
+    .ct svg { display: block; margin: 0 auto 6px; width: 36px; height: 22px; }
+    .ct:hover { border-color: var(--a); color: var(--a); }
+    .ct.active {
+      border-color: var(--a); color: var(--a);
+      background: linear-gradient(135deg, #f0eeff 0%, #e6fdff 100%);
+      box-shadow: 0 2px 12px rgba(108,99,255,0.12);
+    }
+
+    /* ── TOGGLES ── */
+    .tog-list { display: flex; flex-direction: column; gap: 2px; }
+    .tog-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 0; border-bottom: 1px solid var(--border);
+    }
+    .tog-row:last-child { border-bottom: none; }
+    .tog-info { display: flex; flex-direction: column; gap: 1px; }
+    .tog-name { font-size: 13px; font-weight: 600; color: var(--text); }
+    .tog-desc { font-size: 10px; color: var(--muted); }
+    .tog {
+      width: 40px; height: 22px; border-radius: 11px;
+      background: #dddcf0; border: none; cursor: pointer;
+      position: relative; transition: background .25s; flex-shrink: 0;
+    }
+    .tog::after {
+      content: ''; position: absolute;
+      left: 3px; top: 3px; width: 16px; height: 16px;
+      border-radius: 50%; background: #fff;
+      transition: left .22s; box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+    }
+    .tog.on { background: var(--a); }
+    .tog.on::after { left: 21px; }
+
+    /* ── SLIDERS ── */
+    .slider-row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+    .slider-meta { display: flex; justify-content: space-between; align-items: center; }
+    .slider-name { font-size: 12px; font-weight: 600; color: var(--text); }
+    .slider-val {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px; color: var(--a); font-weight: 600;
+      background: #f0eeff; padding: 2px 8px; border-radius: 6px;
+    }
+    input[type=range] {
+      width: 100%; accent-color: var(--a); height: 4px; cursor: pointer;
+    }
+
+    /* ── FOOTER ── */
+    .footer {
+      padding: 12px 24px 16px;
+      background: #fff;
+      border-top: 1px solid var(--border);
+      display: flex; gap: 10px;
+      flex-shrink: 0;
+    }
+    .btn-cancel {
+      flex: 1; padding: 11px 0;
+      background: var(--surface); border: 2px solid var(--border);
+      color: var(--muted); font-family: 'Syne', sans-serif;
+      font-size: 12px; font-weight: 700; letter-spacing: .8px;
+      text-transform: uppercase; border-radius: 12px; cursor: pointer;
+      transition: all .15s;
+    }
+    .btn-cancel:hover { background: var(--border); }
+    .btn-save {
+      flex: 2; padding: 11px 0;
+      background: linear-gradient(90deg, var(--a), var(--a2));
+      color: #fff; border: none;
+      font-family: 'Syne', sans-serif;
+      font-size: 12px; font-weight: 800; letter-spacing: 1px;
+      text-transform: uppercase; border-radius: 12px; cursor: pointer;
+      box-shadow: 0 4px 16px rgba(108,99,255,0.3);
+      transition: opacity .15s, transform .12s;
+    }
+    .btn-save:hover { opacity: .9; transform: translateY(-1px); }
+    .btn-save:active { transform: translateY(0); }
+  </style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- HEADER -->
+  <div class="hdr">
+    <div class="hdr-eyebrow">KPI Card Pro</div>
+    <div class="hdr-title">Format Extension</div>
+    <div class="hdr-sub">Customize how your card looks and behaves</div>
+  </div>
+
+  <!-- SCROLLABLE BODY -->
+  <div class="scroll">
+
+    <!-- TITLE -->
+    <div class="section">
+      <div class="sec-label">Card Title</div>
+      <div class="title-field">
+        <span class="icon">✏️</span>
+        <input type="text" id="titleInput" placeholder="e.g.  Total Revenue, Monthly Sales…" maxlength="60"/>
+      </div>
+      <div class="field-hint">Leave blank to auto-clean the field name (removes SUM, AVG etc.)</div>
+    </div>
+
+    <!-- ACCENT COLOR -->
+    <div class="section">
+      <div class="sec-label">Accent Color</div>
+      <div class="pal-grid" id="palGrid"></div>
+    </div>
+
+    <!-- CHART TYPE -->
+    <div class="section">
+      <div class="sec-label">Trend Chart Style</div>
+      <div class="chart-grid">
+        <div class="ct active" data-type="area">
+          <svg viewBox="0 0 36 22" fill="none">
+            <path d="M2 16 C8 11 14 6 20 9 C26 12 31 5 34 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M2 16 C8 11 14 6 20 9 C26 12 31 5 34 4 L34 19 L2 19Z" fill="currentColor" opacity=".2"/>
+          </svg>
+          Area
+        </div>
+        <div class="ct" data-type="line">
+          <svg viewBox="0 0 36 22" fill="none">
+            <path d="M2 16 C8 11 14 6 20 9 C26 12 31 5 34 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <circle cx="34" cy="4" r="2.5" fill="currentColor"/>
+          </svg>
+          Line
+        </div>
+        <div class="ct" data-type="bar">
+          <svg viewBox="0 0 36 22" fill="none">
+            <rect x="2"  y="14" width="6" height="6" rx="1.5" fill="currentColor" opacity=".5"/>
+            <rect x="10" y="9"  width="6" height="11" rx="1.5" fill="currentColor" opacity=".7"/>
+            <rect x="18" y="4"  width="6" height="16" rx="1.5" fill="currentColor"/>
+            <rect x="26" y="11" width="6" height="9"  rx="1.5" fill="currentColor" opacity=".6"/>
+          </svg>
+          Bar
+        </div>
+      </div>
+    </div>
+
+    <!-- VISIBILITY TOGGLES -->
+    <div class="section">
+      <div class="sec-label">Show / Hide Elements</div>
+      <div class="tog-list">
+        <div class="tog-row">
+          <div class="tog-info">
+            <span class="tog-name">Date Tag</span>
+            <span class="tog-desc">Latest period label shown top-right</span>
+          </div>
+          <button class="tog on" id="togDate"></button>
+        </div>
+        <div class="tog-row">
+          <div class="tog-info">
+            <span class="tog-name">Variance Badge</span>
+            <span class="tog-desc">% change vs previous period</span>
+          </div>
+          <button class="tog on" id="togVar"></button>
+        </div>
+        <div class="tog-row">
+          <div class="tog-info">
+            <span class="tog-name">MoM Change Row</span>
+            <span class="tog-desc">Absolute delta and % below the hero</span>
+          </div>
+          <button class="tog on" id="togMom"></button>
+        </div>
+        <div class="tog-row">
+          <div class="tog-info">
+            <span class="tog-name">Trend Chart</span>
+            <span class="tog-desc">Sparkline at the bottom of the card</span>
+          </div>
+          <button class="tog on" id="togChart"></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDERS -->
+    <div class="section">
+      <div class="sec-label">Sizing</div>
+
+      <div class="slider-row">
+        <div class="slider-meta">
+          <span class="slider-name">Chart Height</span>
+          <span class="slider-val" id="chartHVal">70px</span>
+        </div>
+        <input type="range" id="chartHSlider" min="40" max="140" value="70">
+      </div>
+
+      <div class="slider-row">
+        <div class="slider-meta">
+          <span class="slider-name">Top Bar Thickness</span>
+          <span class="slider-val" id="barHVal">5px</span>
+        </div>
+        <input type="range" id="barHSlider" min="2" max="18" value="5">
+      </div>
+    </div>
+
+  </div><!-- /scroll -->
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <button class="btn-cancel" id="btnCancel">Cancel</button>
+    <button class="btn-save"   id="btnSave">✓ &nbsp;Apply &amp; Close</button>
+  </div>
+
+</div>
+
+<script>
+'use strict';
+(function () {
+
+  const PALETTES = [
+    { a:'#6C63FF', b:'#3ECFCF', name:'Violet Teal'  },
+    { a:'#FF6B6B', b:'#FF9A3C', name:'Coral Amber'  },
+    { a:'#10b981', b:'#34d399', name:'Emerald'      },
+    { a:'#3B82F6', b:'#8B5CF6', name:'Ocean Indigo' },
+    { a:'#F59E0B', b:'#FCD34D', name:'Sunrise'      },
+    { a:'#EC4899', b:'#6366F1', name:'Rose Indigo'  },
+    { a:'#14b8a6', b:'#0ea5e9', name:'Teal Sky'     },
+    { a:'#f43f5e', b:'#fb7185', name:'Rose Red'     },
+  ];
+
+  let CFG = {
+    title: '', pal: 0, chartType: 'area',
+    chartH: 70, barH: 5,
+    showDate: true, showVar: true, showMom: true, showChart: true,
+  };
+
+  /* ── INIT ── */
+  tableau.extensions.initializeDialogAsync().then(() => {
+    // Load existing settings
+    try {
+      const raw = tableau.extensions.settings.get('kpiCfg');
+      if (raw) Object.assign(CFG, JSON.parse(raw));
+    } catch {}
+
+    buildUI();
+    populateFromCfg();
+  });
+
+  /* ── BUILD PALETTE GRID ── */
+  function buildUI() {
+    const grid = document.getElementById('palGrid');
+    PALETTES.forEach((p, i) => {
+      const el = document.createElement('div');
+      el.className = 'pal-item' + (i === 0 ? ' active' : '');
+      el.style.cssText = `background:linear-gradient(135deg,${p.a},${p.b});--pw:${p.a}`;
+      el.title = p.name;
+      el.innerHTML = '<span class="check">✓</span>';
+      el.onclick = () => {
+        document.querySelectorAll('.pal-item').forEach((e, j) => e.classList.toggle('active', j === i));
+        CFG.pal = i;
+      };
+      grid.appendChild(el);
+    });
+
+    // Chart type buttons
+    document.querySelectorAll('.ct').forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll('.ct').forEach(b => b.classList.toggle('active', b === btn));
+        CFG.chartType = btn.dataset.type;
+      };
+    });
+
+    // Toggles
+    const toggleMap = [
+      ['togDate',  'showDate'],
+      ['togVar',   'showVar'],
+      ['togMom',   'showMom'],
+      ['togChart', 'showChart'],
+    ];
+    toggleMap.forEach(([id, key]) => {
+      const el = document.getElementById(id);
+      el.onclick = () => { CFG[key] = !CFG[key]; el.classList.toggle('on', CFG[key]); };
+    });
+
+    // Sliders
+    const chs = document.getElementById('chartHSlider'), chv = document.getElementById('chartHVal');
+    chs.oninput = () => { CFG.chartH = +chs.value; chv.textContent = chs.value + 'px'; };
+
+    const bhs = document.getElementById('barHSlider'), bhv = document.getElementById('barHVal');
+    bhs.oninput = () => { CFG.barH = +bhs.value; bhv.textContent = bhs.value + 'px'; };
+
+    // Footer
+    document.getElementById('btnCancel').onclick = () => tableau.extensions.ui.closeDialog('');
+    document.getElementById('btnSave').onclick   = save;
+  }
+
+  /* ── POPULATE FROM EXISTING CFG ── */
+  function populateFromCfg() {
+    document.getElementById('titleInput').value = CFG.title || '';
+
+    document.querySelectorAll('.pal-item').forEach((el, i) => el.classList.toggle('active', i === CFG.pal));
+
+    document.querySelectorAll('.ct').forEach(btn =>
+      btn.classList.toggle('active', btn.dataset.type === CFG.chartType));
+
+    [['togDate','showDate'],['togVar','showVar'],['togMom','showMom'],['togChart','showChart']].forEach(([id, key]) => {
+      document.getElementById(id).classList.toggle('on', CFG[key]);
+    });
+
+    const chs = document.getElementById('chartHSlider');
+    chs.value = CFG.chartH;
+    document.getElementById('chartHVal').textContent = CFG.chartH + 'px';
+
+    const bhs = document.getElementById('barHSlider');
+    bhs.value = CFG.barH;
+    document.getElementById('barHVal').textContent = CFG.barH + 'px';
+  }
+
+  /* ── SAVE ── */
+  function save() {
+    CFG.title = document.getElementById('titleInput').value.trim();
+    tableau.extensions.settings.set('kpiCfg', JSON.stringify(CFG));
+    tableau.extensions.settings.saveAsync().then(() => {
+      tableau.extensions.ui.closeDialog('saved');
+    });
+  }
+
+})();
+</script>
+</body>
+</html>
