@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>KPI Card Pro by Sameera</title>
+  <script src="https://cdn.jsdelivr.net/gh/tableau/extensions-api/lib/tableau.extensions.1.latest.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --accent:   #6C63FF;
+      --accent2:  #3ECFCF;
+      --positive: #10b981;
+      --negative: #ef4444;
+      --card-bg:  #ffffff;
+      --card-radius: 18px;
+      --bar-h: 5px;
+      --label-color: #94939f;
+      --hero-color: #111827;
+      --text-sm: #94939f;
+      --border: #f0eff8;
+    }
+    html, body { width:100%; height:100%; overflow:hidden; font-family:'Syne',sans-serif; background:#eceef4; }
+    #app { width:100%; height:100%; display:flex; align-items:center; justify-content:center; padding:16px; }
+
+    .kpi-card {
+      background:var(--card-bg); border-radius:var(--card-radius);
+      width:min(360px,100%); overflow:hidden;
+      box-shadow:0 2px 8px rgba(0,0,0,0.06),0 12px 40px rgba(0,0,0,0.09);
+    }
+    .top-bar { height:var(--bar-h); background:linear-gradient(90deg,var(--accent),var(--accent2)); transition:background 0.4s; }
+    .card-body { padding:18px 20px 14px; }
+
+    .header-row { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; margin-bottom:10px; }
+    .kpi-label { font-size:11px; font-weight:700; letter-spacing:1.4px; text-transform:uppercase; color:var(--label-color); flex:1; }
+    .badge-group { display:flex; align-items:center; gap:6px; flex-shrink:0; }
+    .date-tag { font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--text-sm); background:#f5f4fd; padding:2px 7px; border-radius:20px; white-space:nowrap; }
+
+    .var-badge { display:inline-flex; align-items:center; gap:3px; font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:600; padding:3px 8px 3px 5px; border-radius:20px; white-space:nowrap; transition:all 0.3s; }
+    .var-badge.up   { background:#e8faf3; color:var(--positive); }
+    .var-badge.down { background:#fef1f1; color:var(--negative); }
+    .var-badge svg  { width:11px; height:11px; }
+
+    .hero-amount { font-size:clamp(32px,8vw,44px); font-weight:800; color:var(--hero-color); letter-spacing:-2px; line-height:1; font-feature-settings:"tnum"; margin:6px 0 4px; }
+
+    .mom-row { display:flex; align-items:center; gap:6px; margin-bottom:14px; }
+    .mom-delta { font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:600; }
+    .mom-delta.up   { color:var(--positive); }
+    .mom-delta.down { color:var(--negative); }
+    .mom-label { font-size:11px; color:var(--text-sm); }
+
+    .chart-wrap { position:relative; width:100%; }
+    svg.spark { width:100%; display:block; overflow:visible; }
+    .x-labels { display:flex; justify-content:space-between; padding:3px 2px 0; }
+    .x-labels span { font-size:9px; color:#c5c4d4; font-weight:600; letter-spacing:0.3px; }
+
+    .divider { height:1px; background:var(--border); }
+    .fmt-btn-wrap { padding:10px 20px; }
+    .fmt-btn {
+      width:100%; padding:9px 0;
+      background:linear-gradient(90deg,var(--accent),var(--accent2));
+      color:#fff; font-family:'Syne',sans-serif; font-size:12px; font-weight:700;
+      letter-spacing:1px; text-transform:uppercase;
+      border:none; border-radius:10px; cursor:pointer;
+      transition:opacity 0.2s,transform 0.15s;
+    }
+    .fmt-btn:hover { opacity:0.88; transform:translateY(-1px); }
+
+    /* Panel */
+    .panel-overlay { position:fixed; inset:0; background:rgba(10,10,20,0.45); backdrop-filter:blur(2px); z-index:100; display:none; align-items:flex-end; justify-content:center; }
+    .panel-overlay.open { display:flex; }
+    .fmt-panel { background:#fff; width:100%; max-width:420px; border-radius:20px 20px 0 0; padding:0 0 28px; box-shadow:0 -8px 40px rgba(0,0,0,0.15); max-height:88vh; overflow-y:auto; animation:slideUp 0.28s cubic-bezier(.22,1,.36,1); }
+    @keyframes slideUp { from{transform:translateY(100%)} to{transform:translateY(0)} }
+    .panel-handle { width:36px; height:4px; background:#e0dff0; border-radius:2px; margin:14px auto 6px; }
+    .panel-title { font-size:13px; font-weight:800; letter-spacing:1.2px; text-transform:uppercase; color:#1a1a2e; text-align:center; padding:8px 0 14px; border-bottom:1px solid #f0eff8; }
+    .panel-section { padding:16px 20px 8px; }
+    .section-label { font-size:10px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase; color:#b0afc0; margin-bottom:10px; }
+
+    .swatches { display:flex; gap:8px; flex-wrap:wrap; }
+    .swatch { width:26px; height:26px; border-radius:50%; cursor:pointer; border:2.5px solid transparent; transition:transform .15s,box-shadow .15s; }
+    .swatch:hover { transform:scale(1.15); }
+    .swatch.active { box-shadow:0 0 0 2px #fff,0 0 0 4.5px var(--sw); transform:scale(1.08); }
+
+    .chart-types { display:flex; gap:8px; }
+    .ct-btn { flex:1; padding:9px 0; border-radius:10px; border:2px solid #eeedf8; background:#faf9ff; cursor:pointer; font-family:'Syne',sans-serif; font-size:11px; font-weight:700; color:#9898ac; display:flex; flex-direction:column; align-items:center; gap:5px; transition:all .15s; }
+    .ct-btn svg { width:28px; height:18px; }
+    .ct-btn:hover,.ct-btn.active { border-color:var(--accent); color:var(--accent); background:linear-gradient(135deg,#f0eeff,#e6feff); }
+
+    .toggle-row { display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid #f5f4fc; }
+    .toggle-row:last-child { border-bottom:none; }
+    .toggle-label { font-size:12px; font-weight:600; color:#3a3a5c; }
+    .toggle { width:36px; height:20px; border-radius:10px; background:#e0dff0; cursor:pointer; position:relative; transition:background 0.25s; flex-shrink:0; border:none; outline:none; }
+    .toggle::after { content:''; position:absolute; left:3px; top:3px; width:14px; height:14px; border-radius:50%; background:#fff; transition:left 0.25s; box-shadow:0 1px 3px rgba(0,0,0,0.2); }
+    .toggle.on { background:var(--accent); }
+    .toggle.on::after { left:19px; }
+
+    .slider-wrap { display:flex; align-items:center; gap:10px; margin-top:6px; }
+    .slider-wrap input[type=range] { flex:1; accent-color:var(--accent); height:4px; }
+    .slider-val { font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--accent); min-width:32px; text-align:right; }
+
+    .panel-close-row { padding:14px 20px 0; }
+    .panel-close { width:100%; padding:11px 0; background:#f5f4fc; color:#6660a0; font-family:'Syne',sans-serif; font-size:12px; font-weight:700; letter-spacing:.8px; text-transform:uppercase; border:none; border-radius:10px; cursor:pointer; transition:background 0.15s; }
+    .panel-close:hover { background:#eceafc; }
+
+    .tt { position:fixed; pointer-events:none; opacity:0; background:#1a1a2e; color:#fff; font-family:'JetBrains Mono',monospace; font-size:11px; padding:6px 10px; border-radius:7px; z-index:200; white-space:nowrap; box-shadow:0 4px 14px rgba(0,0,0,0.25); transition:opacity .12s; }
+
+    .no-data { padding:30px 20px; text-align:center; font-size:12px; color:#b0b0c0; line-height:1.8; display:none; }
+    .no-data strong { color:#6C63FF; }
+  </style>
+</head>
+<body>
+<div id="app">
+  <div class="kpi-card" id="kpiCard">
+    <div class="top-bar" id="topBar"></div>
+
+    <div class="card-body" id="cardBody">
+      <div class="header-row">
+        <span class="kpi-label" id="kpiLabel">Metric</span>
+        <div class="badge-group">
+          <span class="date-tag" id="dateTag"></span>
+          <span class="var-badge up" id="varBadge">
+            <svg id="varIcon" viewBox="0 0 12 12" fill="none">
+              <path d="M6 9V3M6 3L3 6M6 3l3 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span id="varText">—</span>
+          </span>
+        </div>
+      </div>
+
+      <div class="hero-amount" id="heroAmount">—</div>
+
+      <div class="mom-row" id="momRow">
+        <span class="mom-delta up" id="momDelta">—</span>
+        <span class="mom-label">vs previous period</span>
+      </div>
+
+      <div class="chart-wrap" id="chartWrap">
+        <svg class="spark" id="sparkSvg" height="70"></svg>
+        <div class="x-labels" id="xLabels"></div>
+      </div>
+    </div>
+
+    <div class="no-data" id="noData">
+      Drop a <strong>Measure</strong> on <em>KPI</em><br>
+      and a <strong>Date / Dimension</strong> on <em>Time</em>
+    </div>
+
+    <div class="divider"></div>
+    <div class="fmt-btn-wrap">
+      <button class="fmt-btn" id="fmtBtn">⚙ &nbsp;Format Extension</button>
+    </div>
+  </div>
+</div>
+
+<div class="tt" id="tt"></div>
+
+<!-- Format Panel -->
+<div class="panel-overlay" id="panelOverlay">
+  <div class="fmt-panel">
+    <div class="panel-handle"></div>
+    <div class="panel-title">Format Extension</div>
+
+    <div class="panel-section">
+      <div class="section-label">Accent Color</div>
+      <div class="swatches" id="swatches"></div>
+    </div>
+
+    <div class="panel-section">
+      <div class="section-label">Trend Chart Type</div>
+      <div class="chart-types">
+        <button class="ct-btn active" data-type="area">
+          <svg viewBox="0 0 28 18" fill="none">
+            <path d="M2 14 C7 9 12 5 16 8 C20 11 24 4 26 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            <path d="M2 14 C7 9 12 5 16 8 C20 11 24 4 26 3 L26 16 L2 16Z" fill="currentColor" opacity=".22"/>
+          </svg>
+          Area
+        </button>
+        <button class="ct-btn" data-type="line">
+          <svg viewBox="0 0 28 18" fill="none">
+            <path d="M2 14 C7 9 12 5 16 8 C20 11 24 4 26 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+          Line
+        </button>
+        <button class="ct-btn" data-type="bar">
+          <svg viewBox="0 0 28 18" fill="none">
+            <rect x="2"  y="10" width="5" height="6" rx="1.5" fill="currentColor" opacity=".55"/>
+            <rect x="9"  y="6"  width="5" height="10" rx="1.5" fill="currentColor" opacity=".75"/>
+            <rect x="16" y="2"  width="5" height="14" rx="1.5" fill="currentColor"/>
+            <rect x="23" y="8"  width="5" height="8"  rx="1.5" fill="currentColor" opacity=".65"/>
+          </svg>
+          Bar
+        </button>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="section-label">Display Options</div>
+      <div class="toggle-row">
+        <span class="toggle-label">Show Date Tag</span>
+        <button class="toggle on" id="togDate"></button>
+      </div>
+      <div class="toggle-row">
+        <span class="toggle-label">Show Variance Badge</span>
+        <button class="toggle on" id="togVar"></button>
+      </div>
+      <div class="toggle-row">
+        <span class="toggle-label">Show MoM Change Row</span>
+        <button class="toggle on" id="togMom"></button>
+      </div>
+      <div class="toggle-row">
+        <span class="toggle-label">Show Trend Chart</span>
+        <button class="toggle on" id="togChart"></button>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="section-label">Chart Height</div>
+      <div class="slider-wrap">
+        <input type="range" id="chartHSlider" min="40" max="140" value="70">
+        <span class="slider-val" id="chartHVal">70px</span>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="section-label">Top Bar Thickness</div>
+      <div class="slider-wrap">
+        <input type="range" id="barHSlider" min="2" max="16" value="5">
+        <span class="slider-val" id="barHVal">5px</span>
+      </div>
+    </div>
+
+    <div class="panel-close-row">
+      <button class="panel-close" id="panelClose">✓ &nbsp;Done</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+(function () {
+
+  const PALETTES = [
+    { a:'#6C63FF', b:'#3ECFCF', name:'Violet Teal'  },
+    { a:'#FF6B6B', b:'#FF9A3C', name:'Coral Amber'  },
+    { a:'#10b981', b:'#34d399', name:'Emerald'      },
+    { a:'#3B82F6', b:'#8B5CF6', name:'Ocean Indigo' },
+    { a:'#F59E0B', b:'#FCD34D', name:'Sunrise'      },
+    { a:'#EC4899', b:'#6366F1', name:'Rose Indigo'  },
+    { a:'#14b8a6', b:'#0ea5e9', name:'Teal Sky'     },
+    { a:'#f43f5e', b:'#fb7185', name:'Rose Red'     },
+  ];
+
+  const CFG = { pal:0, type:'area', showDate:true, showVar:true, showMom:true, showChart:true, chartH:70, barH:5 };
+  let sparkPts = [];
+
+  /* ── BUILD SWATCHES ── */
+  const swEl = document.getElementById('swatches');
+  PALETTES.forEach((p,i) => {
+    const s = document.createElement('div');
+    s.className = 'swatch' + (i===0?' active':'');
+    s.style.cssText = `background:linear-gradient(135deg,${p.a},${p.b});--sw:${p.a}`;
+    s.title = p.name;
+    s.onclick = () => setPalette(i);
+    swEl.appendChild(s);
+  });
+
+  function setPalette(i) {
+    CFG.pal = i;
+    const p = PALETTES[i];
+    document.documentElement.style.setProperty('--accent',  p.a);
+    document.documentElement.style.setProperty('--accent2', p.b);
+    document.querySelectorAll('.swatch').forEach((s,j) => s.classList.toggle('active', j===i));
+    if (sparkPts.length) drawChart();
+  }
+
+  /* ── PANEL ── */
+  const overlay = document.getElementById('panelOverlay');
+  document.getElementById('fmtBtn').onclick    = () => overlay.classList.add('open');
+  document.getElementById('panelClose').onclick = () => overlay.classList.remove('open');
+  overlay.onclick = e => { if (e.target===overlay) overlay.classList.remove('open'); };
+
+  document.querySelectorAll('.ct-btn').forEach(btn => {
+    btn.onclick = () => {
+      CFG.type = btn.dataset.type;
+      document.querySelectorAll('.ct-btn').forEach(b => b.classList.toggle('active', b===btn));
+      if (sparkPts.length) drawChart();
+    };
+  });
+
+  function bindToggle(id, key, fn) {
+    const el = document.getElementById(id);
+    el.onclick = () => { CFG[key] = !CFG[key]; el.classList.toggle('on', CFG[key]); fn(); };
+  }
+  bindToggle('togDate',  'showDate',  applyVisibility);
+  bindToggle('togVar',   'showVar',   applyVisibility);
+  bindToggle('togMom',   'showMom',   applyVisibility);
+  bindToggle('togChart', 'showChart', () => { applyVisibility(); if(sparkPts.length) drawChart(); });
+
+  const chs = document.getElementById('chartHSlider'), chv = document.getElementById('chartHVal');
+  chs.oninput = () => { CFG.chartH = +chs.value; chv.textContent = chs.value+'px'; if(sparkPts.length) drawChart(); };
+
+  const bhs = document.getElementById('barHSlider'), bhv = document.getElementById('barHVal');
+  bhs.oninput = () => { CFG.barH = +bhs.value; bhv.textContent = bhs.value+'px'; document.documentElement.style.setProperty('--bar-h', bhs.value+'px'); };
+
+  function applyVisibility() {
+    document.getElementById('dateTag').style.display   = CFG.showDate  ? '' : 'none';
+    document.getElementById('varBadge').style.display  = CFG.showVar   ? '' : 'none';
+    document.getElementById('momRow').style.display    = CFG.showMom   ? '' : 'none';
+    document.getElementById('chartWrap').style.display = CFG.showChart ? '' : 'none';
+  }
+
+  /* ── TABLEAU ── */
+  window.onload = function () {
+    tableau.extensions.initializeAsync().then(() => {
+      const ws = tableau.extensions.worksheetContent.worksheet;
+      const go = () => load(ws);
+      ws.addEventListener(tableau.TableauEventType.SummaryDataChanged, go);
+      window.addEventListener('resize', () => { if(sparkPts.length) drawChart(); });
+      go();
+    }).catch(showErr);
+  };
+
+  async function load(ws) {
+    try {
+      const [rows, enc] = await Promise.all([readRows(ws), readEnc(ws)]);
+      renderCard(rows, enc);
+    } catch { showErr(); }
+  }
+
+  async function readRows(ws) {
+    let rows = [];
+    const r = await ws.getSummaryDataReaderAsync(undefined, { ignoreSelection:true });
+    for (let i = 0; i < r.pageCount; i++) {
+      const pg = await r.getPageAsync(i);
+      pg.data.forEach(row => {
+        const o = {};
+        pg.columns.forEach((c,idx) => { o[c.fieldName] = row[idx]; });
+        rows.push(o);
+      });
+    }
+    await r.releaseAsync();
+    return rows;
+  }
+
+  async function readEnc(ws) {
+    const spec = await ws.getVisualSpecificationAsync();
+    const map = {};
+    if (spec.activeMarksSpecificationIndex < 0) return map;
+    const m = spec.marksSpecifications[spec.activeMarksSpecificationIndex];
+    m.encodings.forEach(e => { map[e.id] = e.field; });
+    return map;
+  }
+
+  /* ── RENDER ── */
+  function renderCard(rows, enc) {
+    if (!enc.kpi || rows.length === 0) { showErr(); return; }
+    hideErr();
+
+    const vf = enc.kpi.name;
+    const tf = enc.time ? enc.time.name : null;
+
+    document.getElementById('kpiLabel').textContent = vf;
+
+    let series = rows.map(r => ({
+      v: parseFloat(r[vf]?.nativeValue) || 0,
+      t: tf ? (r[tf]?.formattedValue || '') : ''
+    }));
+    if (tf) series.sort((a,b) => a.t.localeCompare(b.t, undefined, { numeric:true }));
+
+    const vals = series.map(s => s.v);
+    const labs = series.map(s => s.t);
+    const last = vals.at(-1) || 0;
+    const prev = vals.length > 1 ? vals.at(-2) : null;
+
+    /* date tag */
+    const dtEl = document.getElementById('dateTag');
+    dtEl.textContent = labs.at(-1) || '';
+    dtEl.style.display = (CFG.showDate && labs.at(-1)) ? '' : 'none';
+
+    /* hero */
+    document.getElementById('heroAmount').textContent = fmt(last);
+
+    /* variance & mom */
+    if (prev !== null) {
+      const diff = last - prev;
+      const pct  = prev !== 0 ? (diff / Math.abs(prev)) * 100 : 0;
+      const up   = diff >= 0;
+      const badge = document.getElementById('varBadge');
+      badge.className = 'var-badge ' + (up ? 'up' : 'down');
+      document.getElementById('varText').textContent = (up?'+':'') + pct.toFixed(1) + '%';
+      document.getElementById('varIcon').innerHTML = up
+        ? '<path d="M6 9V3M6 3L3 6M6 3l3 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>'
+        : '<path d="M6 3v6M6 9L3 6m3 3l3-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>';
+      const md = document.getElementById('momDelta');
+      md.className = 'mom-delta ' + (up?'up':'down');
+      md.textContent = (up ? '▲ +' : '▼ ') + fmt(Math.abs(diff)) + '  (' + (up?'+':'') + pct.toFixed(1) + '%)';
+    }
+
+    applyVisibility();
+
+    /* x labels */
+    const xl = document.getElementById('xLabels');
+    xl.innerHTML = '';
+    if (labs.length > 1) {
+      [labs[0], labs[Math.floor(labs.length/2)], labs.at(-1)].filter(Boolean).forEach(l => {
+        const sp = document.createElement('span'); sp.textContent = l; xl.appendChild(sp);
+      });
+    }
+
+    sparkPts = vals.map((v,i) => ({ v, label: labs[i] || String(i+1) }));
+    drawChart();
+  }
+
+  /* ── CHART ── */
+  function drawChart() {
+    const svgEl = document.getElementById('sparkSvg');
+    const wrap  = document.getElementById('chartWrap');
+    if (!CFG.showChart) { wrap.style.display='none'; return; }
+    wrap.style.display = '';
+
+    const H = CFG.chartH;
+    svgEl.setAttribute('height', H);
+    d3.select(svgEl).selectAll('*').remove();
+    if (sparkPts.length < 2) return;
+
+    const W   = svgEl.clientWidth || 320;
+    const p   = { t:6, r:6, b:4, l:6 };
+    const vs  = sparkPts.map(d => d.v);
+    const pa  = PALETTES[CFG.pal];
+    const xSc = d3.scaleLinear().domain([0, vs.length-1]).range([p.l, W-p.r]);
+    const mn  = d3.min(vs), mx = d3.max(vs), pad = (mx-mn)*0.1 || 1;
+    const ySc = d3.scaleLinear().domain([mn-pad, mx+pad]).range([H-p.b, p.t]);
+    const svg = d3.select(svgEl);
+    const uid = 'g'+Date.now();
+
+    if (CFG.type === 'bar') {
+      const bw = Math.max(3, (W-p.l-p.r)/vs.length * 0.62);
+      svg.selectAll('rect').data(vs).enter().append('rect')
+        .attr('x', (_,i) => xSc(i)-bw/2).attr('y', d => ySc(d))
+        .attr('width', bw).attr('height', d => (H-p.b)-ySc(d))
+        .attr('rx', 3)
+        .attr('fill', (_,i) => i===vs.length-1 ? pa.a : pa.b+'99');
+    } else {
+      const defs = svg.append('defs');
+      const gr = defs.append('linearGradient').attr('id', uid).attr('x1','0').attr('y1','0').attr('x2','0').attr('y2','1');
+      gr.append('stop').attr('offset','0%').attr('stop-color', pa.a).attr('stop-opacity', 0.35);
+      gr.append('stop').attr('offset','100%').attr('stop-color', pa.b).attr('stop-opacity', 0.0);
+
+      const curveFn = d3.curveCatmullRom.alpha(0.5);
+      const lineFn  = d3.line().x((_,i) => xSc(i)).y(d => ySc(d)).curve(curveFn);
+
+      if (CFG.type === 'area') {
+        svg.append('path').datum(vs)
+          .attr('d', d3.area().x((_,i) => xSc(i)).y0(H-p.b).y1(d => ySc(d)).curve(curveFn))
+          .attr('fill', `url(#${uid})`);
+      }
+      svg.append('path').datum(vs).attr('d', lineFn)
+        .attr('fill','none').attr('stroke', pa.a).attr('stroke-width', 2.5).attr('stroke-linecap','round');
+
+      svg.append('circle').attr('cx', xSc(vs.length-1)).attr('cy', ySc(vs.at(-1))).attr('r', 4)
+        .attr('fill', pa.a).attr('stroke','#fff').attr('stroke-width', 2);
+    }
+
+    /* hover */
+    const tt  = document.getElementById('tt');
+    const vl  = svg.append('line').attr('y1',p.t).attr('y2',H-p.b).attr('stroke','#d0cfe8').attr('stroke-width',1).attr('stroke-dasharray','3,2').style('opacity',0);
+    const vd  = svg.append('circle').attr('r',4).attr('fill',pa.a).attr('stroke','#fff').attr('stroke-width',2).style('opacity',0);
+    svg.append('rect').attr('width',W).attr('height',H).attr('fill','transparent').style('cursor','crosshair')
+      .on('mousemove', function(e) {
+        const [mx] = d3.pointer(e, svgEl);
+        const ci = Math.max(0, Math.min(vs.length-1, Math.round(xSc.invert(mx))));
+        vl.attr('x1',xSc(ci)).attr('x2',xSc(ci)).style('opacity',1);
+        vd.attr('cx',xSc(ci)).attr('cy',ySc(vs[ci])).style('opacity',1);
+        tt.style('opacity',1).style('left',(e.clientX+14)+'px').style('top',(e.clientY-30)+'px')
+          .innerHTML = `<b>${sparkPts[ci].label}</b> &nbsp; ${fmt(vs[ci])}`;
+      })
+      .on('mouseleave', () => { vl.style('opacity',0); vd.style('opacity',0); tt.style('opacity',0); });
+  }
+
+  /* ── HELPERS ── */
+  function fmt(v) {
+    if (Math.abs(v) >= 1e9) return (v/1e9).toFixed(2)+'B';
+    if (Math.abs(v) >= 1e6) return (v/1e6).toFixed(2)+'M';
+    if (Math.abs(v) >= 1e3) return (v/1e3).toFixed(1)+'K';
+    return v.toLocaleString(undefined, { maximumFractionDigits:1 });
+  }
+  function showErr() { document.getElementById('cardBody').style.display='none'; document.getElementById('noData').style.display='block'; }
+  function hideErr() { document.getElementById('cardBody').style.display=''; document.getElementById('noData').style.display='none'; }
+
+})();
+</script>
+</body>
+</html>
